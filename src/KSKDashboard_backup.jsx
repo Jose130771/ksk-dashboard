@@ -4,7 +4,6 @@ const TABS = [
   { id: "cargo", icon: "🚗", label: "Calculadora de Carga" },
   { id: "route", icon: "🗺️", label: "Planificador de Ruta" },
   { id: "notify", icon: "📱", label: "Avisos a Clientes" },
-  { id: "verify", icon: "✅", label: "Verificación Previa" },
   { id: "address", icon: "📍", label: "Verificador de Dirección" },
 ];
 
@@ -50,9 +49,6 @@ async function callClaude(prompt) {
   return data.content?.[0]?.text || "Error al procesar";
 }
 
-
-const VERIFY_MESSAGES = { es: (cl, addr, time) => `Hola ${cl}, su vehículo será recogido hoy a las ${time} en ${addr}. Confirme respondiendo SÍ.`, fr: (cl, addr, time) => `Bonjour ${cl}, votre véhicule sera récupéré aujourd'hui à ${time} au ${addr}. Merci de confirmer en répondant OUI.`, en: (cl, addr, time) => `Hello ${cl}, your vehicle will be collected today at ${time} from ${addr}. Please reply YES to confirm.`, ro: (cl, addr, time) => `Bună ziua ${cl}, vehiculul va fi ridicat astăzi la ${time} din ${addr}. Confirmați răspunzând DA.`, de: (cl, addr, time) => `Guten Tag ${cl}, Ihr Fahrzeug wird heute um ${time} in ${addr} abgeholt. Bitte bestätigen Sie mit JA.` };
-function VerificationModule() { return <div style={{padding: 20, color: 'white'}}><h2>Verificación Previa — próximamente</h2></div>; }
 function CargoCalculator() {
   const [selectedTruck, setSelectedTruck] = useState(TRUCK_TYPES[0]);
   const [selectedCars, setSelectedCars] = useState([]);
@@ -431,7 +427,6 @@ export default function KSKDashboard() {
         {activeTab === "route" && <RoutePlanner />}
         {activeTab === "notify" && <ClientNotifier />}
         {activeTab === "address" && <AddressVerifier />}
-      {activeTab === "verify" && <VerificationModule />}
       </div>
     </div>
   );
