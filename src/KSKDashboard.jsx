@@ -37,7 +37,7 @@ const CAR_MODELS = [
 async function callClaude(prompt) {
   const response = await fetch("/api/anthropic", {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: { "Content-Type": "application/json", "x-api-key": process.env.REACT_APP_ANTHROPIC_KEY, "anthropic-version": "2023-06-01", "x-api-key": process.env.REACT_APP_ANTHROPIC_KEY, "anthropic-version": "2023-06-01" },
     body: JSON.stringify({
       model: "claude-sonnet-4-20250514",
       max_tokens: 1000,
