@@ -6,6 +6,7 @@ const TABS = [
   { id: "notify", icon: "📱", label: "Avisos a Clientes" },
   { id: "loading", icon: "🚛", label: "Asistente de Carga" },
   { id: "address", icon: "📍", label: "Verificador de Dirección" },
+  { id: "loading", icon: "🚛", label: "Asistente de Carga" },
 ];
 
 const TRUCK_TYPES = [
