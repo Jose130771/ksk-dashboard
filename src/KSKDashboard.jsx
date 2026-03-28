@@ -4,6 +4,7 @@ const TABS = [
   { id: "cargo", icon: "🚗", label: "Calculadora de Carga" },
   { id: "route", icon: "🗺️", label: "Planificador de Ruta" },
   { id: "notify", icon: "📱", label: "Avisos a Clientes" },
+  { id: "loading", icon: "🚛", label: "Asistente de Carga" },
   { id: "address", icon: "📍", label: "Verificador de Dirección" },
 ];
 
