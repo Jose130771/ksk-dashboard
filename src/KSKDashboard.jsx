@@ -4,7 +4,6 @@ const TABS = [
   { id: "cargo", icon: "🚗", label: "Calculadora de Carga" },
   { id: "route", icon: "🗺️", label: "Planificador de Ruta" },
   { id: "notify", icon: "📱", label: "Avisos a Clientes" },
-  { id: "verify", icon: "✅", label: "Verificación Previa" },
   { id: "address", icon: "📍", label: "Verificador de Dirección" },
 ];
 
@@ -50,9 +49,6 @@ async function callClaude(prompt) {
   return data.content?.[0]?.text || "Error al procesar";
 }
 
-
-const VERIFY_MESSAGES = { es: (cl, addr, time) => `Hola ${cl}, su vehículo será recogido hoy a las ${time} en ${addr}. Confirme respondiendo SÍ.`, fr: (cl, addr, time) => `Bonjour ${cl}, votre véhicule sera récupéré aujourd'hui à ${time} au ${addr}. Merci de confirmer en répondant OUI.`, en: (cl, addr, time) => `Hello ${cl}, your vehicle will be collected today at ${time} from ${addr}. Please reply YES to confirm.`, ro: (cl, addr, time) => `Bună ziua ${cl}, vehiculul va fi ridicat astăzi la ${time} din ${addr}. Confirmați răspunzând DA.`, de: (cl, addr, time) => `Guten Tag ${cl}, Ihr Fahrzeug wird heute um ${time} in ${addr} abgeholt. Bitte bestätigen Sie mit JA.` };
-function VerificationModule() { return <div style={{padding: 20, color: 'white'}}><h2>Verificación Previa — próximamente</h2></div>; }
 function CargoCalculator() {
   const [selectedTruck, setSelectedTruck] = useState(TRUCK_TYPES[0]);
   const [selectedCars, setSelectedCars] = useState([]);
@@ -230,6 +226,21 @@ function ClientNotifier() {
   const [result, setResult] = useState("");
   const [loading, setLoading] = useState(false);
 
+
+  const sendEmail = async () => {
+    if (!clientEmail) { alert('Introduce el email del cliente'); return; }
+    if (!result) { alert('Primero genera el email'); return; }
+    const ls = result.split('\n');
+    const subjectLine = ls.find(l => l.toLowerCase().includes('asunto:')) || '';
+    const subject = subjectLine.replace(/.*asunto:\s*/i, '').trim() || 'Aviso de entrega - KSK Transport';
+    try {
+      const res = await fetch('/api/send-email', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ to: clientEmail, subject, body: result }) });
+      const data = await res.json();
+      if (data.success) alert('Email enviado a ' + clientEmail);
+      else alert('Error: ' + data.error);
+    } catch (e) { alert('Error: ' + e.message); }
+  };
+
   const generate = async () => {
     if (!clientName || !vehicle || !eta) return;
     setLoading(true);
@@ -309,6 +320,7 @@ Genera SOLO el email, sin explicaciones adicionales.`;
               padding: "4px 12px", borderRadius: 6, background: "rgba(16,185,129,0.2)", border: "1px solid #10b981",
               color: "#10b981", fontSize: 12, cursor: "pointer",
             }}>📋 Copiar</button>
+                <button onClick={sendEmail} style={{ padding: "4px 12px", borderRadius: 6, background: "rgba(59,130,246,0.2)", border: "1px solid #3b82f6", color: "#3b82f6", fontSize: 12, cursor: "pointer", marginLeft: 8 }}>📧 Enviar por Gmail</button>
           </div>
           <div style={{ whiteSpace: "pre-wrap", fontSize: 13, lineHeight: 1.7, color: "#e2e8f0" }}>{result}</div>
         </div>
@@ -431,7 +443,6 @@ export default function KSKDashboard() {
         {activeTab === "route" && <RoutePlanner />}
         {activeTab === "notify" && <ClientNotifier />}
         {activeTab === "address" && <AddressVerifier />}
-      {activeTab === "verify" && <VerificationModule />}
       </div>
     </div>
   );
