@@ -4,7 +4,6 @@ const TABS = [
   { id: "cargo", icon: "🚗", label: "Calculadora de Carga" },
   { id: "route", icon: "🗺️", label: "Planificador de Ruta" },
   { id: "notify", icon: "📱", label: "Avisos a Clientes" },
-  { id: "loading", icon: "🚛", label: "Asistente de Carga" },
   { id: "address", icon: "📍", label: "Verificador de Dirección" },
   { id: "loading", icon: "🚛", label: "Asistente de Carga" },
 ];
@@ -228,21 +227,6 @@ function ClientNotifier() {
   const [result, setResult] = useState("");
   const [loading, setLoading] = useState(false);
 
-
-  const sendEmail = async () => {
-    if (!clientEmail) { alert('Introduce el email del cliente'); return; }
-    if (!result) { alert('Primero genera el email'); return; }
-    const ls = result.split('\n');
-    const subjectLine = ls.find(l => l.toLowerCase().includes('asunto:')) || '';
-    const subject = subjectLine.replace(/.*asunto:\s*/i, '').trim() || 'Aviso de entrega - KSK Transport';
-    try {
-      const res = await fetch('/api/send-email', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ to: clientEmail, subject, body: result }) });
-      const data = await res.json();
-      if (data.success) alert('Email enviado a ' + clientEmail);
-      else alert('Error: ' + data.error);
-    } catch (e) { alert('Error: ' + e.message); }
-  };
-
   const generate = async () => {
     if (!clientName || !vehicle || !eta) return;
     setLoading(true);
@@ -322,7 +306,6 @@ Genera SOLO el email, sin explicaciones adicionales.`;
               padding: "4px 12px", borderRadius: 6, background: "rgba(16,185,129,0.2)", border: "1px solid #10b981",
               color: "#10b981", fontSize: 12, cursor: "pointer",
             }}>📋 Copiar</button>
-                <button onClick={sendEmail} style={{ padding: "4px 12px", borderRadius: 6, background: "rgba(59,130,246,0.2)", border: "1px solid #3b82f6", color: "#3b82f6", fontSize: 12, cursor: "pointer", marginLeft: 8 }}>📧 Enviar por Gmail</button>
           </div>
           <div style={{ whiteSpace: "pre-wrap", fontSize: 13, lineHeight: 1.7, color: "#e2e8f0" }}>{result}</div>
         </div>
@@ -333,153 +316,95 @@ Genera SOLO el email, sin explicaciones adicionales.`;
 
 
 function LoadingAssistant() {
-  const { useState } = React;
-  const VEHICLES = [
-    { id:'berlingo', name:'Berlingo / Combo', type:'Monovolumen alto', height:180, wheelbase:275 },
-    { id:'corsa', name:'Opel Corsa', type:'Berlina compacta', height:148, wheelbase:256 },
-    { id:'kamiq', name:'Skoda Kamiq', type:'SUV urbano', height:158, wheelbase:263 },
-    { id:'jimny', name:'Suzuki Jimny', type:'4x4 compacto (rueda repuesto)', height:173, wheelbase:224, spare:true },
-    { id:'suv', name:'SUV grande', type:'SUV alto', height:175, wheelbase:270 },
-    { id:'sedan', name:'Berlina / Sedán', type:'Berlina estándar', height:145, wheelbase:265 },
-    { id:'van', name:'Furgoneta', type:'Van mediana', height:195, wheelbase:310 },
-    { id:'pickup', name:'Pickup', type:'Pickup doble cab.', height:178, wheelbase:315 },
-  ];
-
   const [counts, setCounts] = React.useState({});
   const [result, setResult] = React.useState(null);
-  const [loading, setLoading] = React.useState(false);
 
-  const change = (id, delta) => {
-    setCounts(prev => ({ ...prev, [id]: Math.max(0, (prev[id]||0) + delta) }));
-  };
+  const VEHICLES = [
+    { id:'berlingo', name:'Berlingo/Combo', type:'Monovolumen alto', height:180 },
+    { id:'corsa', name:'Opel Corsa', type:'Berlina compacta', height:148 },
+    { id:'kamiq', name:'Skoda Kamiq', type:'SUV urbano', height:158 },
+    { id:'jimny', name:'Suzuki Jimny', type:'4x4 + rueda repuesto', height:173, spare:true },
+    { id:'suv', name:'SUV grande', type:'SUV alto', height:175 },
+    { id:'sedan', name:'Berlina/Sedan', type:'Berlina estandar', height:145 },
+    { id:'van', name:'Furgoneta', type:'Van mediana', height:195 },
+    { id:'pickup', name:'Pickup', type:'Pickup doble cab.', height:178 },
+  ];
 
-  const totalVehicles = Object.values(counts).reduce((a,b)=>a+b,0);
+  const change = (id, d) => setCounts(prev => ({ ...prev, [id]: Math.max(0,(prev[id]||0)+d) }));
+  const total = Object.values(counts).reduce((a,b)=>a+b,0);
 
-  const calculate = async () => {
+  const calculate = () => {
     const list = [];
     VEHICLES.forEach(v => { for(let i=0;i<(counts[v.id]||0);i++) list.push({...v}); });
-    if(list.length === 0) { alert('Añade al menos un vehículo'); return; }
-    setLoading(true);
+    if(!list.length) { alert('Añade vehiculos'); return; }
 
     const berlingos = list.filter(v=>v.id==='berlingo'||v.id==='van');
     const bajos = list.filter(v=>['corsa','sedan'].includes(v.id));
     const suv = list.filter(v=>['kamiq','suv'].includes(v.id));
     const jimny = list.filter(v=>v.id==='jimny');
-    const pickup = list.filter(v=>v.id==='pickup');
-
+    let bi=0,ci=0,si=0,ji=0;
     const slots = [];
-    let bi=0, ci=0, si=0, ji=0, pi=0;
 
-    // CAMIÓN PISO SUPERIOR (plazas 1-2)
-    if(berlingos[bi]) { slots.push({pos:1,zona:'Camión — piso superior (trasera)',vehicle:berlingos[bi++],dir:'Marcha adelante (de cara)',note:'Picado baja parte trasera → crea hueco abajo',poza:false}); }
-    else if(suv[si]) { slots.push({pos:1,zona:'Camión — piso superior (trasera)',vehicle:suv[si++],dir:'Marcha adelante',note:'SUV en piso superior — verificar altura',poza:false}); }
+    const add = (pos,zona,v,dir,note,warn) => slots.push({pos,zona,v,dir,note,warn});
 
-    if(berlingos[bi]) { slots.push({pos:2,zona:'Camión — piso superior (delantera)',vehicle:berlingos[bi++],dir:'Marcha adelante (de cara)',note:'Picado levanta parte delantera',poza:false}); }
-    else if(suv[si]) { slots.push({pos:2,zona:'Camión — piso superior (delantera)',vehicle:suv[si++],dir:'Marcha adelante',note:'Verificar altura total',poza:false}); }
-
-    // CAMIÓN PISO INFERIOR (plazas 3-4)
-    if(bajos[ci]) { slots.push({pos:3,zona:'Camión — piso inferior (bajo plaza 1)',vehicle:bajos[ci++],dir:'Marcha atrás',note:'Habitáculo encaja en hueco del picado plaza 1'}); }
-    if(bajos[ci]) { slots.push({pos:4,zona:'Camión — piso inferior (bajo plaza 2)',vehicle:bajos[ci++],dir:'Marcha atrás',note:'Habitáculo encaja en hueco del picado plaza 2'}); }
-
-    // REMOLQUE PISO SUPERIOR (plazas 5-6) — pozas
-    if(berlingos[bi]) { slots.push({pos:5,zona:'Remolque — piso superior (primera)',vehicle:berlingos[bi++],dir:'Marcha adelante',note:'Abrir pozas — medir distancia entre ejes. -15cm altura.',poza:true}); }
-    if(berlingos[bi]) { slots.push({pos:6,zona:'Remolque — piso superior (segunda)',vehicle:berlingos[bi++],dir:'Marcha adelante',note:'Nuevas pozas ajustadas. Medir eje sobre carrocería.',poza:true}); }
-
-    // REMOLQUE PISO INFERIOR (plazas 7-8-9)
-    if(bajos[ci]) { slots.push({pos:7,zona:'Remolque — piso inferior (lado lanza)',vehicle:bajos[ci++],dir:'Marcha adelante',note:'Posición delantera. Picado levanta morro hacia piso superior.'}); }
-    else if(pickup[pi]) { slots.push({pos:7,zona:'Remolque — piso inferior (lado lanza)',vehicle:pickup[pi++],dir:'Marcha adelante',note:'Pickup: verificar longitud total con lanza.'}); }
-
-    if(suv[si]) { slots.push({pos:8,zona:'Remolque — piso inferior (centro)',vehicle:suv[si++],dir:'Marcha adelante',note:'Morro bajo vehículo anterior — efecto bocadillo.'}); }
-    else if(bajos[ci]) { slots.push({pos:8,zona:'Remolque — piso inferior (centro)',vehicle:bajos[ci++],dir:'Marcha adelante',note:'Bocadillo con vehículo plaza 7.'}); }
-
-    if(jimny[ji]) { slots.push({pos:9,zona:'Remolque — piso inferior (trasera)',vehicle:jimny[ji++],dir:'Marcha adelante (de cara)',note:'⚠ V-60 obligatoria si rueda de repuesto sobresale. Carga complicada con 3 en piso inferior.',warn:true}); }
-    else if(bajos[ci]) { slots.push({pos:9,zona:'Remolque — piso inferior (trasera)',vehicle:bajos[ci++],dir:'Marcha adelante',note:'Tercera plaza piso inferior — piso superior quedará elevado.'}); }
-
-    // Calcular altura estimada
-    const topVehicles = slots.filter(s=>s.zona.includes('superior'));
-    const maxTopH = topVehicles.length > 0 ? Math.max(...topVehicles.map(s=>s.vehicle.height)) : 0;
-    const truckHeight = 140; // altura base plataforma cm
-    const polesHeight = maxTopH > 0 ? truckHeight + maxTopH : 0;
-    const totalHeight = polesHeight > 0 ? (polesHeight / 100).toFixed(2) : '—';
+    if(berlingos[bi]) add(1,'Camion sup (trasera)',berlingos[bi++],'MA — de cara','Picado baja parte trasera, crea hueco abajo');
+    else if(suv[si]) add(1,'Camion sup (trasera)',suv[si++],'MA','Verificar altura total');
+    if(berlingos[bi]) add(2,'Camion sup (delantera)',berlingos[bi++],'MA — de cara','Picado levanta parte delantera');
+    else if(suv[si]) add(2,'Camion sup (delantera)',suv[si++],'MA','Verificar altura total');
+    if(bajos[ci]) add(3,'Camion inf (bajo plaza 1)',bajos[ci++],'Marcha atras','Habitaculo encaja en hueco picado plaza 1');
+    if(bajos[ci]) add(4,'Camion inf (bajo plaza 2)',bajos[ci++],'Marcha atras','Habitaculo encaja en hueco picado plaza 2');
+    if(berlingos[bi]) add(5,'Remolque sup (1a)',berlingos[bi++],'MA — pozas','Abrir pozas, medir ejes. -15cm altura');
+    if(berlingos[bi]) add(6,'Remolque sup (2a)',berlingos[bi++],'MA — pozas','Nuevas pozas ajustadas al eje');
+    if(bajos[ci]) add(7,'Remolque inf (lado lanza)',bajos[ci++],'MA','Posicion delantera, picado levanta morro');
+    if(suv[si]) add(8,'Remolque inf (centro)',suv[si++],'MA','Bocadillo: morro bajo plaza 7');
+    else if(bajos[ci]) add(8,'Remolque inf (centro)',bajos[ci++],'MA','Bocadillo con plaza 7');
+    if(jimny[ji]) add(9,'Remolque inf (trasera)',jimny[ji++],'MA de cara','V-60 si rueda sobresale. Carga dificil.',true);
 
     const alerts = [];
-    if(jimny[0]||jimny.length>0) alerts.push('V-60 obligatoria — Jimny con rueda de repuesto puede sobresalir.');
-    if(slots.filter(s=>s.zona.includes('inferior')&&s.zona.includes('Remolque')).length>=3) alerts.push('3 coches en piso inferior remolque: piso superior elevado, altura total considerable.');
-    if(parseFloat(totalHeight) > 4.0) alerts.push(`Altura estimada ${totalHeight}m — supera límite de 4.00m (Alemania). Verificar ruta.`);
-    if(parseFloat(totalHeight) > 4.5) alerts.push(`Altura estimada ${totalHeight}m — supera límite de 4.50m (España/Francia). CARGA NO PERMITIDA.`);
+    if(jimny.length) alerts.push('V-60 obligatoria — Jimny con rueda de repuesto puede sobresalir.');
+    if(slots.filter(s=>s.zona.includes('inf')&&s.zona.includes('Remolque')).length>=3) alerts.push('3 coches piso inf remolque: piso sup elevado, altura considerable.');
 
-    setResult({ slots, totalHeight, alerts, unloaded: list.length - slots.length });
-    setLoading(false);
+    setResult({slots, alerts, unloaded: list.length - slots.length});
   };
 
-  const colors = { warn: '#854F0B', ok: '#085041' };
-
   return (
-    <div style={{ maxWidth: 900, margin: '0 auto', padding: '0 8px' }}>
-      <h2 style={{ color: '#0ea5e9', marginBottom: 20, fontFamily: "'Rajdhani', sans-serif", fontSize: 22 }}>🚛 Asistente de Carga — Kassbohrer</h2>
-
-      <div style={{ marginBottom: 24 }}>
-        <p style={{ color: '#9ca3af', fontSize: 12, marginBottom: 12 }}>VEHÍCULOS A CARGAR ({totalVehicles} total)</p>
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(160px, 1fr))', gap: 8 }}>
-          {VEHICLES.map(v => (
-            <div key={v.id} style={{ background: (counts[v.id]||0)>0 ? 'rgba(14,165,233,0.08)' : '#1a2332', border: (counts[v.id]||0)>0 ? '1px solid #0ea5e9' : '1px solid rgba(255,255,255,0.08)', borderRadius: 8, padding: '10px 12px' }}>
-              <div style={{ fontSize: 13, fontWeight: 600, color: '#e2e8f0' }}>{v.name}</div>
-              <div style={{ fontSize: 11, color: '#9ca3af', marginTop: 2 }}>{v.type} · {v.height}cm</div>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 8 }}>
-                <button onClick={()=>change(v.id,-1)} style={{ width:22,height:22,borderRadius:4,border:'1px solid rgba(255,255,255,0.15)',background:'rgba(255,255,255,0.05)',color:'#e2e8f0',cursor:'pointer',fontSize:14,display:'flex',alignItems:'center',justifyContent:'center' }}>-</button>
-                <span style={{ fontSize:14,fontWeight:600,color:'#e2e8f0',minWidth:18,textAlign:'center' }}>{counts[v.id]||0}</span>
-                <button onClick={()=>change(v.id,+1)} style={{ width:22,height:22,borderRadius:4,border:'1px solid rgba(255,255,255,0.15)',background:'rgba(255,255,255,0.05)',color:'#e2e8f0',cursor:'pointer',fontSize:14,display:'flex',alignItems:'center',justifyContent:'center' }}>+</button>
-              </div>
-            </div>
-          ))}
-        </div>
-      </div>
-
-      <button onClick={calculate} disabled={loading||totalVehicles===0} style={{ width:'100%',padding:'12px',background: totalVehicles>0?'#0ea5e9':'#374151',border:'none',borderRadius:8,color:'white',fontSize:14,fontWeight:600,cursor:totalVehicles>0?'pointer':'not-allowed',marginBottom:24 }}>
-        {loading ? 'Calculando...' : '🔧 Calcular configuración de carga'}
-      </button>
-
-      {result && (
-        <div>
-          {result.alerts.length > 0 && (
-            <div style={{ marginBottom: 16 }}>
-              {result.alerts.map((a,i) => (
-                <div key={i} style={{ background:'rgba(234,179,8,0.1)',border:'1px solid rgba(234,179,8,0.3)',borderRadius:8,padding:'10px 12px',marginBottom:6,fontSize:12,color:'#fbbf24',display:'flex',gap:8 }}>
-                  ⚠ {a}
-                </div>
-              ))}
-            </div>
-          )}
-
-          <div style={{ display:'grid',gridTemplateColumns:'1fr 1fr',gap:8,marginBottom:20 }}>
-            <div style={{ background:'#1a2332',borderRadius:8,padding:'12px 16px',textAlign:'center' }}>
-              <div style={{ fontSize:11,color:'#9ca3af',marginBottom:4 }}>VEHÍCULOS COLOCADOS</div>
-              <div style={{ fontSize:28,fontWeight:700,color:'#10b981' }}>{result.slots.length}</div>
-            </div>
-            <div style={{ background:'#1a2332',borderRadius:8,padding:'12px 16px',textAlign:'center' }}>
-              <div style={{ fontSize:11,color:'#9ca3af',marginBottom:4 }}>ALTURA ESTIMADA</div>
-              <div style={{ fontSize:28,fontWeight:700,color: parseFloat(result.totalHeight)>4.0?'#f59e0b':'#10b981' }}>{result.totalHeight}m</div>
+    <div style={{maxWidth:900,margin:'0 auto',padding:'0 8px'}}>
+      <h2 style={{color:'#0ea5e9',marginBottom:20,fontFamily:"'Rajdhani',sans-serif",fontSize:22}}>Asistente de Carga — Kassbohrer</h2>
+      <p style={{color:'#9ca3af',fontSize:12,marginBottom:12}}>VEHICULOS A CARGAR ({total})</p>
+      <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fill,minmax(150px,1fr))',gap:8,marginBottom:20}}>
+        {VEHICLES.map(v=>(
+          <div key={v.id} style={{background:(counts[v.id]||0)>0?'rgba(14,165,233,0.1)':'#1a2332',border:(counts[v.id]||0)>0?'1px solid #0ea5e9':'1px solid rgba(255,255,255,0.08)',borderRadius:8,padding:'10px 12px'}}>
+            <div style={{fontSize:13,fontWeight:600,color:'#e2e8f0'}}>{v.name}</div>
+            <div style={{fontSize:11,color:'#9ca3af',marginTop:2}}>{v.height}cm</div>
+            <div style={{display:'flex',alignItems:'center',gap:8,marginTop:8}}>
+              <button onClick={()=>change(v.id,-1)} style={{width:22,height:22,borderRadius:4,border:'1px solid rgba(255,255,255,0.15)',background:'rgba(255,255,255,0.05)',color:'#e2e8f0',cursor:'pointer',fontSize:14}}>-</button>
+              <span style={{fontSize:14,fontWeight:600,color:'#e2e8f0',minWidth:18,textAlign:'center'}}>{counts[v.id]||0}</span>
+              <button onClick={()=>change(v.id,+1)} style={{width:22,height:22,borderRadius:4,border:'1px solid rgba(255,255,255,0.15)',background:'rgba(255,255,255,0.05)',color:'#e2e8f0',cursor:'pointer',fontSize:14}}>+</button>
             </div>
           </div>
-
-          <p style={{ color:'#9ca3af',fontSize:12,marginBottom:12 }}>INSTRUCCIONES DE CARGA — ORDEN EXACTO</p>
-          {result.slots.map((s,i) => (
-            <div key={i} style={{ background: s.warn?'rgba(234,179,8,0.06)':'#1a2332', border: s.warn?'1px solid rgba(234,179,8,0.25)':'1px solid rgba(255,255,255,0.06)', borderRadius:8,padding:'12px 16px',marginBottom:6,display:'flex',gap:12,alignItems:'flex-start' }}>
-              <div style={{ minWidth:28,height:28,borderRadius:'50%',background:s.warn?'#854F0B':'#0ea5e9',display:'flex',alignItems:'center',justifyContent:'center',fontSize:13,fontWeight:700,color:'white',flexShrink:0 }}>{s.pos}</div>
-              <div style={{ flex:1 }}>
-                <div style={{ fontSize:11,color:'#9ca3af',marginBottom:2 }}>{s.zona}{s.poza?' · 🕳 POZAS ABIERTAS':''}</div>
-                <div style={{ fontSize:13,fontWeight:600,color:'#e2e8f0' }}>{s.vehicle.name} <span style={{ color:'#0ea5e9',fontWeight:400 }}>— {s.dir}</span></div>
-                <div style={{ fontSize:11,color:s.warn?'#fbbf24':'#6b7280',marginTop:3 }}>{s.note}</div>
+        ))}
+      </div>
+      <button onClick={calculate} style={{width:'100%',padding:12,background:total>0?'#0ea5e9':'#374151',border:'none',borderRadius:8,color:'white',fontSize:14,fontWeight:600,cursor:total>0?'pointer':'not-allowed',marginBottom:24}}>
+        Calcular configuracion de carga
+      </button>
+      {result && (
+        <div>
+          {result.alerts.map((a,i)=>(
+            <div key={i} style={{background:'rgba(234,179,8,0.1)',border:'1px solid rgba(234,179,8,0.3)',borderRadius:8,padding:'10px 12px',marginBottom:8,fontSize:12,color:'#fbbf24'}}>⚠ {a}</div>
+          ))}
+          <p style={{color:'#9ca3af',fontSize:12,marginBottom:12}}>INSTRUCCIONES DE CARGA</p>
+          {result.slots.map((s,i)=>(
+            <div key={i} style={{background:s.warn?'rgba(234,179,8,0.06)':'#1a2332',border:s.warn?'1px solid rgba(234,179,8,0.25)':'1px solid rgba(255,255,255,0.06)',borderRadius:8,padding:'12px 16px',marginBottom:6,display:'flex',gap:12,alignItems:'flex-start'}}>
+              <div style={{minWidth:28,height:28,borderRadius:'50%',background:s.warn?'#854F0B':'#0ea5e9',display:'flex',alignItems:'center',justifyContent:'center',fontSize:13,fontWeight:700,color:'white',flexShrink:0}}>{s.pos}</div>
+              <div>
+                <div style={{fontSize:11,color:'#9ca3af',marginBottom:2}}>{s.zona}</div>
+                <div style={{fontSize:13,fontWeight:600,color:'#e2e8f0'}}>{s.v.name} <span style={{color:'#0ea5e9',fontWeight:400}}>— {s.dir}</span></div>
+                <div style={{fontSize:11,color:s.warn?'#fbbf24':'#6b7280',marginTop:3}}>{s.note}</div>
               </div>
-              <div style={{ fontSize:11,color:'#9ca3af',flexShrink:0 }}>{s.vehicle.height}cm</div>
+              <div style={{fontSize:11,color:'#9ca3af',flexShrink:0,marginLeft:'auto'}}>{s.v.height}cm</div>
             </div>
           ))}
-
-          {result.unloaded > 0 && (
-            <div style={{ background:'rgba(239,68,68,0.08)',border:'1px solid rgba(239,68,68,0.2)',borderRadius:8,padding:'10px 16px',marginTop:8,fontSize:12,color:'#f87171' }}>
-              ⚠ {result.unloaded} vehículo(s) no tienen plaza asignada — revisa la combinación de carrocerías.
-            </div>
-          )}
+          {result.unloaded>0&&<div style={{background:'rgba(239,68,68,0.08)',border:'1px solid rgba(239,68,68,0.2)',borderRadius:8,padding:'10px 16px',marginTop:8,fontSize:12,color:'#f87171'}}>⚠ {result.unloaded} vehiculo(s) sin plaza asignada.</div>}
         </div>
       )}
     </div>
