@@ -316,8 +316,9 @@ Genera SOLO el email, sin explicaciones adicionales.`;
 
 
 function LoadingAssistant() {
-  const [counts, setCounts] = React.useState({});
-  const [result, setResult] = React.useState(null);
+  const { useState } = React;
+  const [counts, setCounts] = useState({});
+  const [result, setResult] = useState(null);
 
   const VEHICLES = [
     { id:'berlingo', name:'Berlingo/Combo', type:'Monovolumen alto', height:180 },
