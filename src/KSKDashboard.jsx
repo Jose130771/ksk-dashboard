@@ -306,6 +306,7 @@ Genera SOLO el email, sin explicaciones adicionales.`;
               padding: "4px 12px", borderRadius: 6, background: "rgba(16,185,129,0.2)", border: "1px solid #10b981",
               color: "#10b981", fontSize: 12, cursor: "pointer",
             }}>📋 Copiar</button>
+                <button onClick={sendEmail} style={{ padding: "4px 12px", borderRadius: 6, background: "rgba(59,130,246,0.2)", border: "1px solid #3b82f6", color: "#3b82f6", fontSize: 12, cursor: "pointer", marginLeft: 8 }}>📧 Enviar por Gmail</button>
           </div>
           <div style={{ whiteSpace: "pre-wrap", fontSize: 13, lineHeight: 1.7, color: "#e2e8f0" }}>{result}</div>
         </div>
