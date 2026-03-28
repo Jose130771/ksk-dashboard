@@ -316,7 +316,6 @@ Genera SOLO el email, sin explicaciones adicionales.`;
 
 
 function LoadingAssistant() {
-  const { useState } = React;
   const [counts, setCounts] = useState({});
   const [result, setResult] = useState(null);
 
