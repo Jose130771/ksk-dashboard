@@ -227,6 +227,21 @@ function ClientNotifier() {
   const [result, setResult] = useState("");
   const [loading, setLoading] = useState(false);
 
+
+  const sendEmail = async () => {
+    if (!clientEmail) { alert('Introduce el email del cliente'); return; }
+    if (!result) { alert('Primero genera el email'); return; }
+    const ls = result.split('\n');
+    const subjectLine = ls.find(l => l.toLowerCase().includes('asunto:')) || '';
+    const subject = subjectLine.replace(/.*asunto:\s*/i, '').trim() || 'Aviso de entrega - KSK Transport';
+    try {
+      const res = await fetch('/api/send-email', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ to: clientEmail, subject, body: result }) });
+      const data = await res.json();
+      if (data.success) alert('Email enviado a ' + clientEmail);
+      else alert('Error: ' + data.error);
+    } catch (e) { alert('Error: ' + e.message); }
+  };
+
   const generate = async () => {
     if (!clientName || !vehicle || !eta) return;
     setLoading(true);
