@@ -332,6 +332,7 @@ Genera SOLO el email, sin explicaciones adicionales.`;
 
 
 function LoadingAssistant() {
+  const { useState } = React;
   const VEHICLES = [
     { id:'berlingo', name:'Berlingo / Combo', type:'Monovolumen alto', height:180, wheelbase:275 },
     { id:'corsa', name:'Opel Corsa', type:'Berlina compacta', height:148, wheelbase:256 },
