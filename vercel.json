@@ -1,4 +1,10 @@
 {
+  "rewrites": [
+    {
+      "source": "/api/anthropic",
+      "destination": "https://api.anthropic.com/v1/messages"
+    }
+  ],
   "crons": [
     {
       "path": "/api/car-hunter-search",
