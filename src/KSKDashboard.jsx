@@ -1,11 +1,12 @@
 import { useState } from "react";
+import CarHunter from "./CarHunter";
 
 const TABS = [
   { id: "cargo", icon: "🚗", label: "Calculadora de Carga" },
   { id: "route", icon: "🗺️", label: "Planificador de Ruta" },
   { id: "notify", icon: "📱", label: "Avisos a Clientes" },
   { id: "address", icon: "📍", label: "Verificador de Dirección" },
-  { id: "loading", icon: "🚛", label: "Asistente de Carga" },
+  { id: "loading", icon: "🚛", label: "Asistente de Carga" },{ id: "carhunter", icon: "🚗", label: "Car Hunter" },
 ];
 
 const TRUCK_TYPES = [
@@ -490,7 +491,7 @@ Analiza:
 export default function KSKDashboard() {
   const [activeTab, setActiveTab] = useState("cargo");
 
-  const tabColors = { cargo: "#f59e0b", route: "#3b82f6", notify: "#10b981", address: "#a855f7", loading: "#0ea5e9" };
+  const tabColors = { cargo: "#f59e0b", route: "#3b82f6", notify: "#10b981", address: "#a855f7", loading: "#0ea5e9", carhunter: "#16a34a" };
   const color = tabColors[activeTab];
 
   return (
@@ -541,7 +542,9 @@ export default function KSKDashboard() {
         {activeTab === "route" && <RoutePlanner />}
         {activeTab === "notify" && <ClientNotifier />}
         {activeTab === "address" && <AddressVerifier />}
-      {activeTab === "loading" && <LoadingAssistant />}
+      {activeTab === "loading" && <LoadingAssistant/>}
+
+        {activeTab === "carhunter" && <CarHunter />}
       </div>
     </div>
   );
