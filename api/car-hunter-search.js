@@ -23,13 +23,24 @@ async function buscarChollos(alerta) {
       content: `Eres experto en compraventa de coches. Busca oportunidades con estos criterios:
 Vehículo: ${alerta.coche}, Precio máx: ${alerta.precioMax}€, Zona: ${alerta.zona}, Fuentes: ${alerta.fuentes}
 Devuelve SOLO JSON sin backticks:
-{"chollos":[{"titulo":"BMW 330e 2019","precio_venta":17500,"precio_mercado":22000,"ahorro":4500,"margen_reventa":3200,"año":2019,"km":89000,"combustible":"Híbrido","zona":"Madrid","fuente":"AutoScout24","url":"https://www.autoscout24.es","score":8.7,"motivo":"19% bajo mercado","riesgos":"Revisar batería"}]}`
+{"chollos":[{"titulo":"BMW 330e Sport 2019","precio_venta":17500,"precio_mercado":22000,"ahorro":4500,"margen_reventa":3200,"año":2019,"km":89000,"combustible":"Híbrido","zona":"Madrid","fuente":"AutoScout24","url":"https://www.autoscout24.es","score":8.7,"motivo":"19% bajo mercado","riesgos":"Revisar batería"}]}`
     }]
   });
   const raw = response.content[0].text.replace(/```json|```/g, '').trim();
   const match = raw.match(/\{[\s\S]*\}/);
   if (!match) throw new Error('No JSON');
   return JSON.parse(match[0]);
+}
+
+async function enviarTelegram(chatId, mensaje) {
+  const token = process.env.TELEGRAM_BOT_TOKEN;
+  const url = `https://api.telegram.org/bot${token}/sendMessage`;
+  const res = await fetch(url, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ chat_id: chatId, text: mensaje, parse_mode: 'HTML' })
+  });
+  return res.json();
 }
 
 async function enviarEmail(to, subject, body) {
@@ -55,23 +66,41 @@ export default async function handler(req, res) {
 
   const resultados = [];
   for (const alerta of ALERTAS) {
-    if (!alerta.email) continue;
     try {
       const { chollos } = await buscarChollos(alerta);
       const top = chollos.filter(c => c.score >= alerta.scoreMin);
+
       if (top.length > 0) {
-        const subject = `🚗 Car Hunter: ${top.length} chollo(s) — ${alerta.coche}`;
-        const body = `Hola! El agente Car Hunter encontró ${top.length} oportunidad(es):\n\n` +
-          top.map((c, i) => `${i+1}. ${c.titulo}
+        // Telegram — instantáneo
+        const chatId = process.env.TELEGRAM_CHAT_ID;
+        if (chatId) {
+          const msg = `🚗 <b>Car Hunter — ${top.length} chollo(s) encontrado(s)</b>\n\n` +
+            top.map((c, i) => `${i+1}. <b>${c.titulo}</b>
+💰 €${c.precio_venta.toLocaleString()} <s>€${c.precio_mercado.toLocaleString()}</s>
+📈 Margen: +€${c.margen_reventa.toLocaleString()}
+⭐ Score: ${c.score}/10
+📍 ${c.zona} · ${c.fuente}
+✅ ${c.motivo}
+⚠️ ${c.riesgos}
+🔗 ${c.url}`).join('\n\n―――――――――――\n\n') +
+            `\n\n🔎 Ver dashboard: ksk-dashboard-iwzs.vercel.app`;
+          await enviarTelegram(chatId, msg);
+        }
+
+        // Email también
+        if (alerta.email) {
+          const subject = `🚗 Car Hunter: ${top.length} chollo(s) — ${alerta.coche}`;
+          const body = top.map((c, i) => `${i+1}. ${c.titulo}
    💰 €${c.precio_venta.toLocaleString()} (mercado: €${c.precio_mercado.toLocaleString()})
    📈 Margen: +€${c.margen_reventa.toLocaleString()}
    ⭐ Score: ${c.score}/10
    📍 ${c.zona} · ${c.fuente}
    ✅ ${c.motivo}
    ⚠️ ${c.riesgos}
-   🔗 ${c.url}`).join('\n\n---\n\n') +
-          `\n\nVer dashboard: ksk-dashboard-iwzs.vercel.app`;
-        await enviarEmail(alerta.email, subject, body);
+   🔗 ${c.url}`).join('\n\n---\n\n');
+          await enviarEmail(alerta.email, subject, body);
+        }
+
         resultados.push({ coche: alerta.coche, enviado: true, chollos: top.length });
       } else {
         resultados.push({ coche: alerta.coche, enviado: false, motivo: 'Sin chollos suficientes' });
