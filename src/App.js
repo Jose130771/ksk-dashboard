@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import Login from './pages/Login';
+import KSKDashboard from './KSKDashboard';
 
 export default function App() {
   const [authenticated, setAuthenticated] = useState(false);
@@ -55,7 +56,8 @@ export default function App() {
         </div>
       </nav>
       
-      {/* Tu contenido del dashboard va aquí */}
+      {/* Tu dashboard va aquí */}
+      <KSKDashboard />
     </div>
   );
 }
