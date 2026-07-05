@@ -37,9 +37,10 @@ const CAR_MODELS = [
 ];
 
 async function callClaude(prompt) {
+  // La API key NUNCA va en el frontend: la pone el proxy /api/anthropic en el servidor
   const response = await fetch("/api/anthropic", {
     method: "POST",
-    headers: { "Content-Type": "application/json", "x-api-key": process.env.REACT_APP_ANTHROPIC_KEY, "anthropic-version": "2023-06-01", "x-api-key": process.env.REACT_APP_ANTHROPIC_KEY, "anthropic-version": "2023-06-01" },
+    headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
       model: "claude-sonnet-5",
       max_tokens: 1000,
@@ -48,7 +49,11 @@ async function callClaude(prompt) {
     }),
   });
   const data = await response.json();
-  return data.content?.[0]?.text || "Error al procesar";
+  if (!response.ok || !data.content?.[0]?.text) {
+    const motivo = data.error?.message || `HTTP ${response.status}`;
+    return `Error al procesar: ${motivo}`;
+  }
+  return data.content[0].text;
 }
 
 function CargoCalculator() {
