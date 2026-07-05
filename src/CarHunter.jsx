@@ -1,10 +1,9 @@
-CarHunter.jsx
 import { useState } from "react";
 
 async function askClaude(prompt) {
   const res = await fetch("/api/anthropic", {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: { "Content-Type": "application/json", Authorization: `Bearer ${localStorage.getItem("auth_token") || ""}` },
     body: JSON.stringify({
       model: "claude-sonnet-4-20250514",
       max_tokens: 1500,
@@ -12,7 +11,8 @@ async function askClaude(prompt) {
     }),
   });
   const data = await res.json();
-  const raw = (data.content?.[0]?.text || "").replace(/```json|```/g, "").trim();
+  const texto = data.content?.find((b) => b.type === "text")?.text || "";
+  const raw = texto.replace(/```json|```/g, "").trim();
   const match = raw.match(/\{[\s\S]*\}/);
   if (!match) throw new Error("No JSON");
   return JSON.parse(match[0]);

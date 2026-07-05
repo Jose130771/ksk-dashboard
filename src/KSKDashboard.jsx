@@ -37,10 +37,11 @@ const CAR_MODELS = [
 ];
 
 async function callClaude(prompt) {
-  // La API key NUNCA va en el frontend: la pone el proxy /api/anthropic en el servidor
+  // La API key NUNCA va en el frontend: la pone el proxy /api/anthropic en el servidor.
+  // Se envía el token del login para que solo usuarios autenticados puedan usar la IA.
   const response = await fetch("/api/anthropic", {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: { "Content-Type": "application/json", Authorization: `Bearer ${localStorage.getItem("auth_token") || ""}` },
     body: JSON.stringify({
       model: "claude-sonnet-5",
       max_tokens: 1000,
@@ -239,11 +240,12 @@ function ClientNotifier() {
   const sendEmail = async () => {
     if (!clientEmail) { alert('Introduce el email del cliente'); return; }
     if (!result) { alert('Primero genera el email'); return; }
+    if (result.startsWith('Error al procesar')) { alert('La generación falló, no se puede enviar. Vuelve a generar el email.'); return; }
     const ls = result.split('\n');
     const subjectLine = ls.find(l => l.toLowerCase().includes('asunto:')) || '';
     const subject = subjectLine.replace(/.*asunto:\s*/i, '').trim() || 'Aviso de entrega - KSK Transport';
     try {
-      const res = await fetch('/api/send-email', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ to: clientEmail, subject, body: result }) });
+      const res = await fetch('/api/send-email', { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${localStorage.getItem('auth_token') || ''}` }, body: JSON.stringify({ to: clientEmail, subject, body: result }) });
       const data = await res.json();
       if (data.success) alert('Email enviado a ' + clientEmail);
       else alert('Error: ' + data.error);

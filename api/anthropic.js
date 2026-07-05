@@ -1,6 +1,16 @@
+const jwt = require('jsonwebtoken');
+
 export default async function handler(req, res) {
   if (req.method !== 'POST') {
     return res.status(405).json({ error: 'Method not allowed' });
+  }
+
+  // Solo usuarios logueados pueden usar la IA (protege el saldo de Anthropic)
+  try {
+    const token = (req.headers.authorization || '').replace('Bearer ', '');
+    jwt.verify(token, process.env.JWT_SECRET || 'dev-secret-key');
+  } catch (e) {
+    return res.status(401).json({ error: { message: 'Sesión caducada o no válida. Cierra sesión y vuelve a entrar.' } });
   }
 
   // ANTHROPIC_API_KEY es solo del servidor (sin prefijo REACT_APP_ para que CRA no la meta en el bundle)
