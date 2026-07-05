@@ -41,7 +41,7 @@ async function callClaude(prompt) {
     method: "POST",
     headers: { "Content-Type": "application/json", "x-api-key": process.env.REACT_APP_ANTHROPIC_KEY, "anthropic-version": "2023-06-01", "x-api-key": process.env.REACT_APP_ANTHROPIC_KEY, "anthropic-version": "2023-06-01" },
     body: JSON.stringify({
-      model: "claude-sonnet-4-20250514",
+      model: "claude-sonnet-5",
       max_tokens: 1000,
       system: "Eres un experto en logística de transporte internacional de automóviles en Europa. Responde siempre en español, de forma clara y profesional.",
       messages: [{ role: "user", content: prompt }],
