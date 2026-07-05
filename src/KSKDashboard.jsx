@@ -49,11 +49,13 @@ async function callClaude(prompt) {
     }),
   });
   const data = await response.json();
-  if (!response.ok || !data.content?.[0]?.text) {
+  // claude-sonnet-5 puede devolver un bloque "thinking" antes del texto: hay que buscar el bloque de tipo "text"
+  const texto = data.content?.find((b) => b.type === "text")?.text;
+  if (!response.ok || !texto) {
     const motivo = data.error?.message || `HTTP ${response.status}`;
     return `Error al procesar: ${motivo}`;
   }
-  return data.content[0].text;
+  return texto;
 }
 
 function CargoCalculator() {
