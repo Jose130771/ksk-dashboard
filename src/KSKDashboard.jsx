@@ -1,12 +1,18 @@
-import { useState } from "react";
+import { useState, useMemo, createContext, useContext } from "react";
 import CarHunter from "./CarHunter";
+import { LANGS, AI_LANG_NAME, makeT, getSavedLang } from "./i18n";
+
+// Contexto de idioma: cualquier componente puede leer { lang, t }
+const LangContext = createContext({ lang: "fr", t: (k) => k });
+const useLang = () => useContext(LangContext);
 
 const TABS = [
-  { id: "cargo", icon: "🚗", label: "Calculadora de Carga" },
-  { id: "route", icon: "🗺️", label: "Planificador de Ruta" },
-  { id: "notify", icon: "📱", label: "Avisos a Clientes" },
-  { id: "address", icon: "📍", label: "Verificador de Dirección" },
-  { id: "loading", icon: "🚛", label: "Asistente de Carga" },{ id: "carhunter", icon: "🚗", label: "Car Hunter" },
+  { id: "cargo", icon: "🚗" },
+  { id: "route", icon: "🗺️" },
+  { id: "notify", icon: "📱" },
+  { id: "address", icon: "📍" },
+  { id: "loading", icon: "🚛" },
+  { id: "carhunter", icon: "🚗" },
 ];
 
 const TRUCK_TYPES = [
@@ -36,16 +42,17 @@ const CAR_MODELS = [
   { brand: "Range Rover", model: "Sport", height: 1.78, length: 4.88, weight: 2200, type: "SUV Lujo" },
 ];
 
-async function callClaude(prompt) {
+async function callClaude(prompt, lang = "fr") {
   // La API key NUNCA va en el frontend: la pone el proxy /api/anthropic en el servidor.
   // Se envía el token del login para que solo usuarios autenticados puedan usar la IA.
+  // La IA responde en el idioma del interfaz (lang).
   const response = await fetch("/api/anthropic", {
     method: "POST",
     headers: { "Content-Type": "application/json", Authorization: `Bearer ${localStorage.getItem("auth_token") || ""}` },
     body: JSON.stringify({
       model: "claude-sonnet-5",
       max_tokens: 1000,
-      system: "Eres un experto en logística de transporte internacional de automóviles en Europa. Responde siempre en español, de forma clara y profesional.",
+      system: `Eres un experto en logística de transporte internacional de automóviles en Europa. Responde SIEMPRE en ${AI_LANG_NAME[lang] || "français"}, de forma clara y profesional.`,
       messages: [{ role: "user", content: prompt }],
     }),
   });
@@ -60,6 +67,7 @@ async function callClaude(prompt) {
 }
 
 function CargoCalculator() {
+  const { t, lang } = useLang();
   const [selectedTruck, setSelectedTruck] = useState(TRUCK_TYPES[0]);
   const [selectedCars, setSelectedCars] = useState([]);
   const [result, setResult] = useState(null);
@@ -91,28 +99,28 @@ Total: ${selectedCars.length} vehículos, ${totalWeight}kg
 
 ${fits ? '¿Cómo distribuyo óptimamente estos vehículos en el camión (nivel superior e inferior)? Da instrucciones específicas de carga.' : '¿Cómo puedo adaptar esta carga? ¿Qué vehículos debo separar o qué camión alternativo necesito?'}`;
 
-    const res = await callClaude(prompt);
+    const res = await callClaude(prompt, lang);
     setResult({ fits, totalWeight, oversized, text: res });
     setLoading(false);
   };
 
   return (
     <div>
-      <h2 style={{ color: "#f59e0b", marginBottom: 20, fontFamily: "'Rajdhani', sans-serif", fontSize: 22 }}>🚗 Calculadora de Carga</h2>
+      <h2 style={{ color: "#f59e0b", marginBottom: 20, fontFamily: "'Rajdhani', sans-serif", fontSize: 22 }}>{t("cargo_title")}</h2>
 
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 20, marginBottom: 20 }}>
         <div>
-          <label style={{ color: "#9ca3af", fontSize: 13, display: "block", marginBottom: 8 }}>Tipo de camión:</label>
+          <label style={{ color: "#9ca3af", fontSize: 13, display: "block", marginBottom: 8 }}>{t("cargo_truckType")}</label>
           <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-            {TRUCK_TYPES.map(t => (
-              <button key={t.id} onClick={() => setSelectedTruck(t)} style={{
+            {TRUCK_TYPES.map(tk => (
+              <button key={tk.id} onClick={() => setSelectedTruck(tk)} style={{
                 padding: "10px 14px", borderRadius: 8, textAlign: "left",
-                background: selectedTruck.id === t.id ? "rgba(245,158,11,0.15)" : "rgba(255,255,255,0.04)",
-                border: selectedTruck.id === t.id ? "1px solid #f59e0b" : "1px solid rgba(255,255,255,0.08)",
-                color: selectedTruck.id === t.id ? "#f59e0b" : "#9ca3af",
+                background: selectedTruck.id === tk.id ? "rgba(245,158,11,0.15)" : "rgba(255,255,255,0.04)",
+                border: selectedTruck.id === tk.id ? "1px solid #f59e0b" : "1px solid rgba(255,255,255,0.08)",
+                color: selectedTruck.id === tk.id ? "#f59e0b" : "#9ca3af",
                 cursor: "pointer", fontSize: 13,
               }}>
-                {t.icon} {t.name} — {t.capacity} veh. máx
+                {tk.icon} {t(`truck_${tk.id}`)} — {t("cargo_maxVeh", { n: tk.capacity })}
               </button>
             ))}
           </div>
@@ -120,7 +128,7 @@ ${fits ? '¿Cómo distribuyo óptimamente estos vehículos en el camión (nivel 
 
         <div>
           <label style={{ color: "#9ca3af", fontSize: 13, display: "block", marginBottom: 8 }}>
-            Vehículos a cargar ({selectedCars.length}/{selectedTruck.capacity}):
+            {t("cargo_carsToLoad", { x: selectedCars.length, y: selectedTruck.capacity })}
           </label>
           <div style={{ maxHeight: 160, overflowY: "auto", marginBottom: 8 }}>
             {selectedCars.map(c => (
@@ -132,7 +140,7 @@ ${fits ? '¿Cómo distribuyo óptimamente estos vehículos en el camión (nivel 
           </div>
           <select onChange={e => { if (e.target.value) { addCar(CAR_MODELS[parseInt(e.target.value)]); e.target.value = ""; }}}
             style={{ width: "100%", padding: "8px 12px", background: "#1a2332", border: "1px solid rgba(255,255,255,0.1)", borderRadius: 8, color: "#fff", fontSize: 13 }}>
-            <option value="">+ Añadir vehículo...</option>
+            <option value="">{t("cargo_addVehicle")}</option>
             {CAR_MODELS.map((c, i) => (
               <option key={i} value={i}>{c.brand} {c.model} ({c.type})</option>
             ))}
@@ -145,17 +153,17 @@ ${fits ? '¿Cómo distribuyo óptimamente estos vehículos en el camión (nivel 
         background: selectedCars.length > 0 ? "linear-gradient(135deg, #f59e0b, #d97706)" : "rgba(255,255,255,0.05)",
         color: selectedCars.length > 0 ? "#000" : "#666", fontWeight: 700, fontSize: 14,
       }}>
-        {loading ? "Calculando..." : "🔢 Calcular configuración de carga"}
+        {loading ? t("cargo_calculating") : t("cargo_calc")}
       </button>
 
       {result && (
         <div style={{ marginTop: 20, padding: 20, borderRadius: 10, background: result.fits ? "rgba(16,185,129,0.08)" : "rgba(239,68,68,0.08)", border: `1px solid ${result.fits ? "#10b981" : "#ef4444"}` }}>
           <div style={{ display: "flex", gap: 16, marginBottom: 12, flexWrap: "wrap" }}>
             <span style={{ padding: "4px 12px", borderRadius: 20, background: result.fits ? "#10b981" : "#ef4444", color: "#000", fontSize: 12, fontWeight: 700 }}>
-              {result.fits ? "✅ CARGA VÁLIDA" : "❌ PROBLEMA DE CARGA"}
+              {result.fits ? t("cargo_valid") : t("cargo_invalid")}
             </span>
-            <span style={{ color: "#9ca3af", fontSize: 13 }}>Peso total: {result.totalWeight.toLocaleString()}kg / {selectedTruck.maxWeight.toLocaleString()}kg</span>
-            {result.oversized.length > 0 && <span style={{ color: "#f87171", fontSize: 13 }}>⚠️ {result.oversized.length} veh. sobredimensionados</span>}
+            <span style={{ color: "#9ca3af", fontSize: 13 }}>{t("cargo_totalWeight")}: {result.totalWeight.toLocaleString()}kg / {selectedTruck.maxWeight.toLocaleString()}kg</span>
+            {result.oversized.length > 0 && <span style={{ color: "#f87171", fontSize: 13 }}>⚠️ {t("cargo_oversized", { n: result.oversized.length })}</span>}
           </div>
           <div style={{ whiteSpace: "pre-wrap", fontSize: 13, lineHeight: 1.7, color: "#e2e8f0" }}>{result.text}</div>
         </div>
@@ -165,6 +173,7 @@ ${fits ? '¿Cómo distribuyo óptimamente estos vehículos en el camión (nivel 
 }
 
 function RoutePlanner() {
+  const { t, lang } = useLang();
   const [origin, setOrigin] = useState("");
   const [destination, setDestination] = useState("");
   const [vehicles, setVehicles] = useState(6);
@@ -185,27 +194,27 @@ Incluye:
 6. ALERTAS: condiciones especiales, pasos de montaña, zonas ZBE
 7. COSTE ESTIMADO: combustible, peajes, dietas conductor`;
 
-    const res = await callClaude(prompt);
+    const res = await callClaude(prompt, lang);
     setResult(res);
     setLoading(false);
   };
 
   return (
     <div>
-      <h2 style={{ color: "#3b82f6", marginBottom: 20, fontFamily: "'Rajdhani', sans-serif", fontSize: 22 }}>🗺️ Planificador de Ruta Europa</h2>
+      <h2 style={{ color: "#3b82f6", marginBottom: 20, fontFamily: "'Rajdhani', sans-serif", fontSize: 22 }}>{t("route_title")}</h2>
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 120px", gap: 12, marginBottom: 16 }}>
         <div>
-          <label style={{ color: "#9ca3af", fontSize: 12, display: "block", marginBottom: 6 }}>Origen:</label>
-          <input value={origin} onChange={e => setOrigin(e.target.value)} placeholder="Ej: Madrid, España"
+          <label style={{ color: "#9ca3af", fontSize: 12, display: "block", marginBottom: 6 }}>{t("route_origin")}</label>
+          <input value={origin} onChange={e => setOrigin(e.target.value)} placeholder={t("route_originPh")}
             style={{ width: "100%", padding: "10px 14px", background: "#1a2332", border: "1px solid rgba(255,255,255,0.1)", borderRadius: 8, color: "#fff", fontSize: 14, boxSizing: "border-box" }} />
         </div>
         <div>
-          <label style={{ color: "#9ca3af", fontSize: 12, display: "block", marginBottom: 6 }}>Destino:</label>
-          <input value={destination} onChange={e => setDestination(e.target.value)} placeholder="Ej: Múnich, Alemania"
+          <label style={{ color: "#9ca3af", fontSize: 12, display: "block", marginBottom: 6 }}>{t("route_dest")}</label>
+          <input value={destination} onChange={e => setDestination(e.target.value)} placeholder={t("route_destPh")}
             style={{ width: "100%", padding: "10px 14px", background: "#1a2332", border: "1px solid rgba(255,255,255,0.1)", borderRadius: 8, color: "#fff", fontSize: 14, boxSizing: "border-box" }} />
         </div>
         <div>
-          <label style={{ color: "#9ca3af", fontSize: 12, display: "block", marginBottom: 6 }}>Vehículos:</label>
+          <label style={{ color: "#9ca3af", fontSize: 12, display: "block", marginBottom: 6 }}>{t("route_vehicles")}</label>
           <input type="number" value={vehicles} onChange={e => setVehicles(e.target.value)} min={1} max={10}
             style={{ width: "100%", padding: "10px 14px", background: "#1a2332", border: "1px solid rgba(255,255,255,0.1)", borderRadius: 8, color: "#fff", fontSize: 14, boxSizing: "border-box" }} />
         </div>
@@ -215,7 +224,7 @@ Incluye:
         background: origin && destination ? "linear-gradient(135deg, #3b82f6, #1d4ed8)" : "rgba(255,255,255,0.05)",
         color: origin && destination ? "#fff" : "#666", fontWeight: 700, fontSize: 14,
       }}>
-        {loading ? "Planificando..." : "🗺️ Planificar ruta"}
+        {loading ? t("route_planning") : t("route_plan")}
       </button>
       {result && (
         <div style={{ marginTop: 20, padding: 20, borderRadius: 10, background: "rgba(59,130,246,0.08)", border: "1px solid #3b82f6", whiteSpace: "pre-wrap", fontSize: 13, lineHeight: 1.7, color: "#e2e8f0" }}>
@@ -227,29 +236,30 @@ Incluye:
 }
 
 function ClientNotifier() {
+  const { t, lang } = useLang();
   const [clientName, setClientName] = useState("");
   const [clientEmail, setClientEmail] = useState("");
   const [vehicle, setVehicle] = useState("");
   const [eta, setEta] = useState("");
   const [address, setAddress] = useState("");
-  const [language, setLanguage] = useState("es");
+  const [language, setLanguage] = useState("fr");
   const [result, setResult] = useState("");
   const [loading, setLoading] = useState(false);
 
 
   const sendEmail = async () => {
-    if (!clientEmail) { alert('Introduce el email del cliente'); return; }
-    if (!result) { alert('Primero genera el email'); return; }
-    if (result.startsWith('Error al procesar')) { alert('La generación falló, no se puede enviar. Vuelve a generar el email.'); return; }
+    if (!clientEmail) { alert(t("notify_alertEmail")); return; }
+    if (!result) { alert(t("notify_alertGenFirst")); return; }
+    if (result.startsWith('Error al procesar')) { alert(t("notify_alertGenFailed")); return; }
     const ls = result.split('\n');
-    const subjectLine = ls.find(l => l.toLowerCase().includes('asunto:')) || '';
-    const subject = subjectLine.replace(/.*asunto:\s*/i, '').trim() || 'Aviso de entrega - KSK Transport';
+    const subjectLine = ls.find(l => /asunto:|objet\s*:|subject:/i.test(l)) || '';
+    const subject = subjectLine.replace(/.*(asunto|objet|subject)\s*:\s*/i, '').trim() || 'KSK Transport';
     try {
       const res = await fetch('/api/send-email', { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${localStorage.getItem('auth_token') || ''}` }, body: JSON.stringify({ to: clientEmail, subject, body: result }) });
       const data = await res.json();
-      if (data.success) alert('Email enviado a ' + clientEmail);
-      else alert('Error: ' + data.error);
-    } catch (e) { alert('Error: ' + e.message); }
+      if (data.success) alert(t("notify_sentTo") + ' ' + clientEmail);
+      else alert(t("notify_error") + ' ' + data.error);
+    } catch (e) { alert(t("notify_error") + ' ' + e.message); }
   };
 
   const generate = async () => {
@@ -275,44 +285,46 @@ El email debe:
 
 Genera SOLO el email, sin explicaciones adicionales.`;
 
-    const res = await callClaude(prompt);
+    const res = await callClaude(prompt, lang);
     setResult(res);
     setLoading(false);
   };
 
+  const fields = [
+    { key: "notify_name", value: clientName, set: setClientName, ph: "notify_namePh" },
+    { key: "notify_email", value: clientEmail, set: setClientEmail, ph: "notify_emailPh" },
+    { key: "notify_vehicle", value: vehicle, set: setVehicle, ph: "notify_vehiclePh" },
+    { key: "notify_eta", value: eta, set: setEta, ph: "notify_etaPh" },
+  ];
+
   return (
     <div>
-      <h2 style={{ color: "#10b981", marginBottom: 20, fontFamily: "'Rajdhani', sans-serif", fontSize: 22 }}>📱 Avisos Automáticos a Clientes</h2>
+      <h2 style={{ color: "#10b981", marginBottom: 20, fontFamily: "'Rajdhani', sans-serif", fontSize: 22 }}>{t("notify_title")}</h2>
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, marginBottom: 12 }}>
-        {[
-          { label: "Nombre del cliente", value: clientName, set: setClientName, placeholder: "Juan García" },
-          { label: "Email del cliente", value: clientEmail, set: setClientEmail, placeholder: "cliente@email.com" },
-          { label: "Vehículo", value: vehicle, set: setVehicle, placeholder: "BMW Serie 3, matrícula 1234ABC" },
-          { label: "Llegada estimada", value: eta, set: setEta, placeholder: "Martes 18 de marzo, 10:00-14:00h" },
-        ].map(f => (
-          <div key={f.label}>
-            <label style={{ color: "#9ca3af", fontSize: 12, display: "block", marginBottom: 6 }}>{f.label}:</label>
-            <input value={f.value} onChange={e => f.set(e.target.value)} placeholder={f.placeholder}
+        {fields.map(f => (
+          <div key={f.key}>
+            <label style={{ color: "#9ca3af", fontSize: 12, display: "block", marginBottom: 6 }}>{t(f.key)}:</label>
+            <input value={f.value} onChange={e => f.set(e.target.value)} placeholder={t(f.ph)}
               style={{ width: "100%", padding: "10px 14px", background: "#1a2332", border: "1px solid rgba(255,255,255,0.1)", borderRadius: 8, color: "#fff", fontSize: 13, boxSizing: "border-box" }} />
           </div>
         ))}
       </div>
       <div style={{ display: "grid", gridTemplateColumns: "2fr 1fr", gap: 12, marginBottom: 16 }}>
         <div>
-          <label style={{ color: "#9ca3af", fontSize: 12, display: "block", marginBottom: 6 }}>Dirección de entrega:</label>
-          <input value={address} onChange={e => setAddress(e.target.value)} placeholder="Calle Mayor 1, 28001 Madrid"
+          <label style={{ color: "#9ca3af", fontSize: 12, display: "block", marginBottom: 6 }}>{t("notify_address")}:</label>
+          <input value={address} onChange={e => setAddress(e.target.value)} placeholder={t("notify_addressPh")}
             style={{ width: "100%", padding: "10px 14px", background: "#1a2332", border: "1px solid rgba(255,255,255,0.1)", borderRadius: 8, color: "#fff", fontSize: 13, boxSizing: "border-box" }} />
         </div>
         <div>
-          <label style={{ color: "#9ca3af", fontSize: 12, display: "block", marginBottom: 6 }}>Idioma del email:</label>
+          <label style={{ color: "#9ca3af", fontSize: 12, display: "block", marginBottom: 6 }}>{t("notify_emailLang")}:</label>
           <select value={language} onChange={e => setLanguage(e.target.value)}
             style={{ width: "100%", padding: "10px 14px", background: "#1a2332", border: "1px solid rgba(255,255,255,0.1)", borderRadius: 8, color: "#fff", fontSize: 13 }}>
+            <option value="fr">🇫🇷 Français</option>
             <option value="es">🇪🇸 Español</option>
-            <option value="en">🇬🇧 Inglés</option>
-            <option value="de">🇩🇪 Alemán</option>
-            <option value="fr">🇫🇷 Francés</option>
+            <option value="en">🇬🇧 English</option>
+            <option value="de">🇩🇪 Deutsch</option>
             <option value="it">🇮🇹 Italiano</option>
-            <option value="ro">🇷🇴 Rumano</option>
+            <option value="ro">🇷🇴 Română</option>
           </select>
         </div>
       </div>
@@ -321,17 +333,19 @@ Genera SOLO el email, sin explicaciones adicionales.`;
         background: clientName && vehicle && eta ? "linear-gradient(135deg, #10b981, #059669)" : "rgba(255,255,255,0.05)",
         color: clientName && vehicle && eta ? "#000" : "#666", fontWeight: 700, fontSize: 14,
       }}>
-        {loading ? "Generando..." : "✉️ Generar email de aviso"}
+        {loading ? t("notify_generating") : t("notify_generate")}
       </button>
       {result && (
         <div style={{ marginTop: 20, padding: 20, borderRadius: 10, background: "rgba(16,185,129,0.08)", border: "1px solid #10b981" }}>
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
-            <span style={{ color: "#10b981", fontWeight: 700, fontSize: 13 }}>✅ Email generado</span>
-            <button onClick={() => navigator.clipboard.writeText(result)} style={{
-              padding: "4px 12px", borderRadius: 6, background: "rgba(16,185,129,0.2)", border: "1px solid #10b981",
-              color: "#10b981", fontSize: 12, cursor: "pointer",
-            }}>📋 Copiar</button>
-                <button onClick={sendEmail} style={{ padding: "4px 12px", borderRadius: 6, background: "rgba(59,130,246,0.2)", border: "1px solid #3b82f6", color: "#3b82f6", fontSize: 12, cursor: "pointer", marginLeft: 8 }}>📧 Enviar por Gmail</button>
+            <span style={{ color: "#10b981", fontWeight: 700, fontSize: 13 }}>{t("notify_generated")}</span>
+            <div>
+              <button onClick={() => navigator.clipboard.writeText(result)} style={{
+                padding: "4px 12px", borderRadius: 6, background: "rgba(16,185,129,0.2)", border: "1px solid #10b981",
+                color: "#10b981", fontSize: 12, cursor: "pointer",
+              }}>{t("notify_copy")}</button>
+              <button onClick={sendEmail} style={{ padding: "4px 12px", borderRadius: 6, background: "rgba(59,130,246,0.2)", border: "1px solid #3b82f6", color: "#3b82f6", fontSize: 12, cursor: "pointer", marginLeft: 8 }}>{t("notify_sendGmail")}</button>
+            </div>
           </div>
           <div style={{ whiteSpace: "pre-wrap", fontSize: 13, lineHeight: 1.7, color: "#e2e8f0" }}>{result}</div>
         </div>
@@ -342,6 +356,7 @@ Genera SOLO el email, sin explicaciones adicionales.`;
 
 
 function LoadingAssistant() {
+  const { t } = useLang();
   const [counts, setCounts] = useState({});
   const [result, setResult] = useState(null);
 
@@ -362,7 +377,7 @@ function LoadingAssistant() {
   const calculate = () => {
     const list = [];
     VEHICLES.forEach(v => { for(let i=0;i<(counts[v.id]||0);i++) list.push({...v}); });
-    if(!list.length) { alert('Añade vehiculos'); return; }
+    if(!list.length) { alert(t("loading_addAlert")); return; }
 
     const berlingos = list.filter(v=>v.id==='berlingo'||v.id==='van');
     const bajos = list.filter(v=>['corsa','sedan'].includes(v.id));
@@ -395,8 +410,8 @@ function LoadingAssistant() {
 
   return (
     <div style={{maxWidth:900,margin:'0 auto',padding:'0 8px'}}>
-      <h2 style={{color:'#0ea5e9',marginBottom:20,fontFamily:"'Rajdhani',sans-serif",fontSize:22}}>Asistente de Carga — Kassbohrer</h2>
-      <p style={{color:'#9ca3af',fontSize:12,marginBottom:12}}>VEHICULOS A CARGAR ({total})</p>
+      <h2 style={{color:'#0ea5e9',marginBottom:20,fontFamily:"'Rajdhani',sans-serif",fontSize:22}}>{t("loading_title")}</h2>
+      <p style={{color:'#9ca3af',fontSize:12,marginBottom:12}}>{t("loading_toLoad")} ({total})</p>
       <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fill,minmax(150px,1fr))',gap:8,marginBottom:20}}>
         {VEHICLES.map(v=>(
           <div key={v.id} style={{background:(counts[v.id]||0)>0?'rgba(14,165,233,0.1)':'#1a2332',border:(counts[v.id]||0)>0?'1px solid #0ea5e9':'1px solid rgba(255,255,255,0.08)',borderRadius:8,padding:'10px 12px'}}>
@@ -411,14 +426,15 @@ function LoadingAssistant() {
         ))}
       </div>
       <button onClick={calculate} style={{width:'100%',padding:12,background:total>0?'#0ea5e9':'#374151',border:'none',borderRadius:8,color:'white',fontSize:14,fontWeight:600,cursor:total>0?'pointer':'not-allowed',marginBottom:24}}>
-        Calcular configuracion de carga
+        {t("loading_calc")}
       </button>
       {result && (
         <div>
           {result.alerts.map((a,i)=>(
             <div key={i} style={{background:'rgba(234,179,8,0.1)',border:'1px solid rgba(234,179,8,0.3)',borderRadius:8,padding:'10px 12px',marginBottom:8,fontSize:12,color:'#fbbf24'}}>⚠ {a}</div>
           ))}
-          <p style={{color:'#9ca3af',fontSize:12,marginBottom:12}}>INSTRUCCIONES DE CARGA</p>
+          <p style={{color:'#9ca3af',fontSize:12,marginBottom:4}}>{t("loading_instructions")}</p>
+          <p style={{color:'#6b7280',fontSize:10,marginBottom:12,fontStyle:'italic'}}>{t("loading_note")}</p>
           {result.slots.map((s,i)=>(
             <div key={i} style={{background:s.warn?'rgba(234,179,8,0.06)':'#1a2332',border:s.warn?'1px solid rgba(234,179,8,0.25)':'1px solid rgba(255,255,255,0.06)',borderRadius:8,padding:'12px 16px',marginBottom:6,display:'flex',gap:12,alignItems:'flex-start'}}>
               <div style={{minWidth:28,height:28,borderRadius:'50%',background:s.warn?'#854F0B':'#0ea5e9',display:'flex',alignItems:'center',justifyContent:'center',fontSize:13,fontWeight:700,color:'white',flexShrink:0}}>{s.pos}</div>
@@ -430,7 +446,7 @@ function LoadingAssistant() {
               <div style={{fontSize:11,color:'#9ca3af',flexShrink:0,marginLeft:'auto'}}>{s.v.height}cm</div>
             </div>
           ))}
-          {result.unloaded>0&&<div style={{background:'rgba(239,68,68,0.08)',border:'1px solid rgba(239,68,68,0.2)',borderRadius:8,padding:'10px 16px',marginTop:8,fontSize:12,color:'#f87171'}}>⚠ {result.unloaded} vehiculo(s) sin plaza asignada.</div>}
+          {result.unloaded>0&&<div style={{background:'rgba(239,68,68,0.08)',border:'1px solid rgba(239,68,68,0.2)',borderRadius:8,padding:'10px 16px',marginTop:8,fontSize:12,color:'#f87171'}}>⚠ {t("loading_noSlot", { n: result.unloaded })}</div>}
         </div>
       )}
     </div>
@@ -438,6 +454,7 @@ function LoadingAssistant() {
 }
 
 function AddressVerifier() {
+  const { t, lang } = useLang();
   const [address, setAddress] = useState("");
   const [result, setResult] = useState("");
   const [loading, setLoading] = useState(false);
@@ -456,19 +473,19 @@ Analiza:
 4. Instrucciones específicas para llegar con el camión si es posible
 5. Recomendación final clara: ✅ ACCESIBLE / ⚠️ ACCESO DIFÍCIL / ❌ NO ACCESIBLE`;
 
-    const res = await callClaude(prompt);
+    const res = await callClaude(prompt, lang);
     setResult(res);
     setLoading(false);
   };
 
   return (
     <div>
-      <h2 style={{ color: "#a855f7", marginBottom: 20, fontFamily: "'Rajdhani', sans-serif", fontSize: 22 }}>📍 Verificador de Acceso para Camión</h2>
-      <p style={{ color: "#6b7280", fontSize: 13, marginBottom: 16 }}>Verifica si la dirección de entrega del CMR es accesible para un camión portacoches de gran tonelaje</p>
+      <h2 style={{ color: "#a855f7", marginBottom: 20, fontFamily: "'Rajdhani', sans-serif", fontSize: 22 }}>{t("address_title")}</h2>
+      <p style={{ color: "#6b7280", fontSize: 13, marginBottom: 16 }}>{t("address_desc")}</p>
       <div style={{ marginBottom: 16 }}>
-        <label style={{ color: "#9ca3af", fontSize: 12, display: "block", marginBottom: 6 }}>Dirección de entrega (del CMR):</label>
+        <label style={{ color: "#9ca3af", fontSize: 12, display: "block", marginBottom: 6 }}>{t("address_label")}</label>
         <input value={address} onChange={e => setAddress(e.target.value)}
-          placeholder="Ej: Calle Mayor 5, 28001 Madrid, España"
+          placeholder={t("address_ph")}
           style={{ width: "100%", padding: "12px 16px", background: "#1a2332", border: "1px solid rgba(255,255,255,0.1)", borderRadius: 8, color: "#fff", fontSize: 14, boxSizing: "border-box" }} />
       </div>
       <button onClick={verify} disabled={loading || !address} style={{
@@ -476,7 +493,7 @@ Analiza:
         background: address ? "linear-gradient(135deg, #a855f7, #7c3aed)" : "rgba(255,255,255,0.05)",
         color: address ? "#fff" : "#666", fontWeight: 700, fontSize: 14,
       }}>
-        {loading ? "Verificando..." : "🔍 Verificar acceso"}
+        {loading ? t("address_verifying") : t("address_verify")}
       </button>
 
       <div style={{ display: "flex", gap: 10, marginTop: 12, flexWrap: "wrap" }}>
@@ -499,11 +516,15 @@ Analiza:
 
 export default function KSKDashboard() {
   const [activeTab, setActiveTab] = useState("cargo");
+  const [lang, setLang] = useState(getSavedLang);
+  const t = useMemo(() => makeT(lang), [lang]);
+
+  const changeLang = (l) => { setLang(l); localStorage.setItem("ui_lang", l); };
 
   const tabColors = { cargo: "#f59e0b", route: "#3b82f6", notify: "#10b981", address: "#a855f7", loading: "#0ea5e9", carhunter: "#16a34a" };
-  const color = tabColors[activeTab];
 
   return (
+    <LangContext.Provider value={{ lang, t }}>
     <div style={{ minHeight: "100vh", background: "#080c14", fontFamily: "'DM Sans', sans-serif", color: "#fff" }}>
       <style>{`
         @import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500;600;700&family=Rajdhani:wght@600;700&display=swap');
@@ -520,27 +541,33 @@ export default function KSKDashboard() {
           <div style={{ background: "linear-gradient(135deg, #3b82f6, #1d4ed8)", borderRadius: 10, padding: "8px 14px", fontFamily: "'Rajdhani', sans-serif", fontSize: 18, fontWeight: 700, letterSpacing: 1 }}>
             🚛 KSK TRANSPORT
           </div>
-          <div style={{ fontSize: 12, color: "rgba(255,255,255,0.4)" }}>Pro Dashboard v2.0</div>
+          <div style={{ fontSize: 12, color: "rgba(255,255,255,0.4)" }}>{t("hdr_tagline")}</div>
         </div>
-        <div style={{ display: "flex", gap: 16, fontSize: 11, color: "rgba(255,255,255,0.3)" }}>
-          <span>🇪🇺 Europa</span>
-          <span>📋 CMR</span>
-          <span>⚡ IA Activa</span>
+        <div style={{ display: "flex", gap: 16, fontSize: 11, color: "rgba(255,255,255,0.3)", alignItems: "center" }}>
+          <span>🇪🇺 {t("hdr_europe")}</span>
+          <span>📋 {t("hdr_cmr")}</span>
+          <span>⚡ {t("hdr_ai")}</span>
+          <select value={lang} onChange={e => changeLang(e.target.value)} title={t("hdr_lang")}
+            style={{ background: "#1a2332", border: "1px solid rgba(255,255,255,0.12)", borderRadius: 6, color: "#fff", fontSize: 12, padding: "4px 8px", cursor: "pointer" }}>
+            {LANGS.map(l => (
+              <option key={l.code} value={l.code}>{l.flag} {l.label}</option>
+            ))}
+          </select>
         </div>
       </div>
 
       {/* Tabs */}
       <div style={{ background: "rgba(8,12,20,0.9)", borderBottom: "1px solid rgba(255,255,255,0.05)", display: "flex", overflowX: "auto", padding: "0 28px" }}>
-        {TABS.map(t => (
-          <button key={t.id} onClick={() => setActiveTab(t.id)} style={{
+        {TABS.map(tab => (
+          <button key={tab.id} onClick={() => setActiveTab(tab.id)} style={{
             padding: "14px 20px", background: "transparent", border: "none",
-            borderBottom: activeTab === t.id ? `2px solid ${tabColors[t.id]}` : "2px solid transparent",
-            color: activeTab === t.id ? tabColors[t.id] : "rgba(255,255,255,0.4)",
-            fontSize: 13, fontWeight: activeTab === t.id ? 600 : 400,
+            borderBottom: activeTab === tab.id ? `2px solid ${tabColors[tab.id]}` : "2px solid transparent",
+            color: activeTab === tab.id ? tabColors[tab.id] : "rgba(255,255,255,0.4)",
+            fontSize: 13, fontWeight: activeTab === tab.id ? 600 : 400,
             cursor: "pointer", display: "flex", alignItems: "center", gap: 8, flexShrink: 0,
             transition: "all 0.2s",
           }}>
-            <span>{t.icon}</span> {t.label}
+            <span>{tab.icon}</span> {t(`menu_${tab.id}`)}
           </button>
         ))}
       </div>
@@ -551,10 +578,10 @@ export default function KSKDashboard() {
         {activeTab === "route" && <RoutePlanner />}
         {activeTab === "notify" && <ClientNotifier />}
         {activeTab === "address" && <AddressVerifier />}
-      {activeTab === "loading" && <LoadingAssistant/>}
-
+        {activeTab === "loading" && <LoadingAssistant/>}
         {activeTab === "carhunter" && <CarHunter />}
       </div>
     </div>
+    </LangContext.Provider>
   );
 }

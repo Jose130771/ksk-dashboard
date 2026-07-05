@@ -1,10 +1,12 @@
 import { useEffect, useState } from 'react';
 import Login from './pages/Login';
 import KSKDashboard from './KSKDashboard';
+import { makeT, getSavedLang } from './i18n';
 
 export default function App() {
   const [authenticated, setAuthenticated] = useState(false);
   const [loading, setLoading] = useState(true);
+  const t = makeT(getSavedLang());
 
   useEffect(() => {
     const token = localStorage.getItem('auth_token');
@@ -19,7 +21,7 @@ export default function App() {
   };
 
   if (loading) {
-    return <div>Cargando...</div>;
+    return <div>{t('login_loading')}</div>;
   }
 
   if (!authenticated) {
@@ -38,7 +40,7 @@ export default function App() {
         <h2>ksk-dashboard</h2>
         <div>
           <span style={{ marginRight: '15px' }}>
-            Usuario: {localStorage.getItem('auth_user')}
+            {t('login_user')}: {localStorage.getItem('auth_user')}
           </span>
           <button 
             onClick={handleLogout}

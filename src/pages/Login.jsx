@@ -1,10 +1,15 @@
 import { useState } from 'react';
+import { LANGS, makeT, getSavedLang } from '../i18n';
 
 export default function Login({ onLoginSuccess }) {
   const [user, setUser] = useState('');
   const [pass, setPass] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const [lang, setLang] = useState(getSavedLang);
+  const t = makeT(lang);
+
+  const changeLang = (l) => { setLang(l); localStorage.setItem('ui_lang', l); };
 
   const handleLogin = async (e) => {
     e.preventDefault();
@@ -19,13 +24,13 @@ export default function Login({ onLoginSuccess }) {
       });
 
       if (!res.ok) {
-        throw new Error('Invalid credentials');
+        throw new Error(t('login_invalid'));
       }
 
       const { token } = await res.json();
       localStorage.setItem('auth_token', token);
       localStorage.setItem('auth_user', user);
-      
+
       if (onLoginSuccess) {
         onLoginSuccess();
       } else {
@@ -39,21 +44,29 @@ export default function Login({ onLoginSuccess }) {
   };
 
   return (
-    <div style={{ 
-      maxWidth: '400px', 
-      margin: '100px auto', 
+    <div style={{
+      maxWidth: '400px',
+      margin: '100px auto',
       padding: '20px',
       fontFamily: 'sans-serif',
       border: '1px solid #ccc',
       borderRadius: '8px'
     }}>
-      <h1>ksk-dashboard</h1>
-      <p style={{ color: '#666' }}>Ingresa tus credenciales</p>
-      
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px' }}>
+        <h1 style={{ margin: 0 }}>ksk-dashboard</h1>
+        <select value={lang} onChange={(e) => changeLang(e.target.value)}
+          style={{ padding: '4px 8px', borderRadius: '4px', border: '1px solid #ccc', cursor: 'pointer' }}>
+          {LANGS.map(l => (
+            <option key={l.code} value={l.code}>{l.flag} {l.label}</option>
+          ))}
+        </select>
+      </div>
+      <p style={{ color: '#666' }}>{t('login_subtitle')}</p>
+
       {error && (
-        <div style={{ 
-          padding: '10px', 
-          background: '#fee', 
+        <div style={{
+          padding: '10px',
+          background: '#fee',
           color: '#c00',
           borderRadius: '4px',
           marginBottom: '10px'
@@ -64,7 +77,7 @@ export default function Login({ onLoginSuccess }) {
 
       <form onSubmit={handleLogin}>
         <div style={{ marginBottom: '15px' }}>
-          <label style={{ display: 'block', marginBottom: '5px' }}>Usuario:</label>
+          <label style={{ display: 'block', marginBottom: '5px' }}>{t('login_user')}:</label>
           <input
             type="text"
             value={user}
@@ -75,7 +88,7 @@ export default function Login({ onLoginSuccess }) {
         </div>
 
         <div style={{ marginBottom: '15px' }}>
-          <label style={{ display: 'block', marginBottom: '5px' }}>Contraseña:</label>
+          <label style={{ display: 'block', marginBottom: '5px' }}>{t('login_pass')}:</label>
           <input
             type="password"
             value={pass}
@@ -85,10 +98,10 @@ export default function Login({ onLoginSuccess }) {
           />
         </div>
 
-        <button 
-          type="submit" 
+        <button
+          type="submit"
           disabled={loading}
-          style={{ 
+          style={{
             width: '100%',
             padding: '10px',
             background: '#0070f3',
@@ -98,7 +111,7 @@ export default function Login({ onLoginSuccess }) {
             cursor: loading ? 'not-allowed' : 'pointer'
           }}
         >
-          {loading ? 'Cargando...' : 'Entrar'}
+          {loading ? t('login_loading') : t('login_enter')}
         </button>
       </form>
     </div>
