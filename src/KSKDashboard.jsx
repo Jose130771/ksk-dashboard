@@ -1,6 +1,9 @@
 import { useState, useMemo, createContext, useContext } from "react";
 import CarHunter from "./CarHunter";
-import { LANGS, AI_LANG_NAME, makeT, getSavedLang } from "./i18n";
+import { LANGS, makeT, getSavedLang } from "./i18n";
+import { getToken, sessionExpired } from "./auth";
+import { callClaude, ERR } from "./claude";
+import PickupCheck from "./PickupCheck";
 
 // Contexto de idioma: cualquier componente puede leer { lang, t }
 const LangContext = createContext({ lang: "fr", t: (k) => k });
@@ -10,6 +13,7 @@ const TABS = [
   { id: "cargo", icon: "🚗" },
   { id: "route", icon: "🗺️" },
   { id: "notify", icon: "📱" },
+  { id: "pickup", icon: "🛠️" },
   { id: "address", icon: "📍" },
   { id: "loading", icon: "🚛" },
   { id: "carhunter", icon: "🚗" },
@@ -41,30 +45,6 @@ const CAR_MODELS = [
   { brand: "Mercedes", model: "Sprinter", height: 2.37, length: 5.91, weight: 2100, type: "Furgoneta Grande" },
   { brand: "Range Rover", model: "Sport", height: 1.78, length: 4.88, weight: 2200, type: "SUV Lujo" },
 ];
-
-async function callClaude(prompt, lang = "fr") {
-  // La API key NUNCA va en el frontend: la pone el proxy /api/anthropic en el servidor.
-  // Se envía el token del login para que solo usuarios autenticados puedan usar la IA.
-  // La IA responde en el idioma del interfaz (lang).
-  const response = await fetch("/api/anthropic", {
-    method: "POST",
-    headers: { "Content-Type": "application/json", Authorization: `Bearer ${localStorage.getItem("auth_token") || ""}` },
-    body: JSON.stringify({
-      model: "claude-sonnet-5",
-      max_tokens: 1000,
-      system: `Eres un experto en logística de transporte internacional de automóviles en Europa. Responde SIEMPRE en ${AI_LANG_NAME[lang] || "français"}, de forma clara y profesional.`,
-      messages: [{ role: "user", content: prompt }],
-    }),
-  });
-  const data = await response.json();
-  // claude-sonnet-5 puede devolver un bloque "thinking" antes del texto: hay que buscar el bloque de tipo "text"
-  const texto = data.content?.find((b) => b.type === "text")?.text;
-  if (!response.ok || !texto) {
-    const motivo = data.error?.message || `HTTP ${response.status}`;
-    return `Error al procesar: ${motivo}`;
-  }
-  return texto;
-}
 
 function CargoCalculator() {
   const { t, lang } = useLang();
@@ -245,21 +225,35 @@ function ClientNotifier() {
   const [language, setLanguage] = useState("fr");
   const [result, setResult] = useState("");
   const [loading, setLoading] = useState(false);
+  const [sending, setSending] = useState(false);
 
 
   const sendEmail = async () => {
+    if (sending) return; // evita el doble envío si se pulsa dos veces
     if (!clientEmail) { alert(t("notify_alertEmail")); return; }
     if (!result) { alert(t("notify_alertGenFirst")); return; }
-    if (result.startsWith('Error al procesar')) { alert(t("notify_alertGenFailed")); return; }
+    if (result.startsWith(ERR)) { alert(t("notify_alertGenFailed")); return; }
+
+    const token = getToken();
+    if (!token) { sessionExpired(t("session_expired")); return; }
+
     const ls = result.split('\n');
     const subjectLine = ls.find(l => /asunto:|objet\s*:|subject:/i.test(l)) || '';
     const subject = subjectLine.replace(/.*(asunto|objet|subject)\s*:\s*/i, '').trim() || 'KSK Transport';
+
+    setSending(true);
     try {
-      const res = await fetch('/api/send-email', { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${localStorage.getItem('auth_token') || ''}` }, body: JSON.stringify({ to: clientEmail, subject, body: result }) });
-      const data = await res.json();
-      if (data.success) alert(t("notify_sentTo") + ' ' + clientEmail);
-      else alert(t("notify_error") + ' ' + data.error);
-    } catch (e) { alert(t("notify_error") + ' ' + e.message); }
+      const res = await fetch('/api/send-email', { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` }, body: JSON.stringify({ to: clientEmail, subject, body: result }) });
+      const data = await res.json().catch(() => ({}));
+      if (res.status === 401) { sessionExpired(t("session_expired")); return; }
+      if (res.ok && data.success) alert(t("notify_sentTo") + ' ' + clientEmail);
+      // Motivo real del fallo (credenciales de Gmail, dirección inválida...) en vez de "undefined"
+      else alert(t("notify_error") + ' ' + (data.error || `HTTP ${res.status}`));
+    } catch (e) {
+      alert(t("notify_error") + ' ' + e.message);
+    } finally {
+      setSending(false);
+    }
   };
 
   const generate = async () => {
@@ -344,7 +338,7 @@ Genera SOLO el email, sin explicaciones adicionales.`;
                 padding: "4px 12px", borderRadius: 6, background: "rgba(16,185,129,0.2)", border: "1px solid #10b981",
                 color: "#10b981", fontSize: 12, cursor: "pointer",
               }}>{t("notify_copy")}</button>
-              <button onClick={sendEmail} style={{ padding: "4px 12px", borderRadius: 6, background: "rgba(59,130,246,0.2)", border: "1px solid #3b82f6", color: "#3b82f6", fontSize: 12, cursor: "pointer", marginLeft: 8 }}>{t("notify_sendGmail")}</button>
+              <button onClick={sendEmail} disabled={sending} style={{ padding: "4px 12px", borderRadius: 6, background: sending ? "rgba(255,255,255,0.06)" : "rgba(59,130,246,0.2)", border: sending ? "1px solid #475569" : "1px solid #3b82f6", color: sending ? "#94a3b8" : "#3b82f6", fontSize: 12, cursor: sending ? "not-allowed" : "pointer", marginLeft: 8 }}>{sending ? t("notify_sending") : t("notify_sendGmail")}</button>
             </div>
           </div>
           <div style={{ whiteSpace: "pre-wrap", fontSize: 13, lineHeight: 1.7, color: "#e2e8f0" }}>{result}</div>
@@ -521,7 +515,7 @@ export default function KSKDashboard() {
 
   const changeLang = (l) => { setLang(l); localStorage.setItem("ui_lang", l); };
 
-  const tabColors = { cargo: "#f59e0b", route: "#3b82f6", notify: "#10b981", address: "#a855f7", loading: "#0ea5e9", carhunter: "#16a34a" };
+  const tabColors = { cargo: "#f59e0b", route: "#3b82f6", notify: "#10b981", pickup: "#f97316", address: "#a855f7", loading: "#0ea5e9", carhunter: "#16a34a" };
 
   return (
     <LangContext.Provider value={{ lang, t }}>
@@ -577,6 +571,7 @@ export default function KSKDashboard() {
         {activeTab === "cargo" && <CargoCalculator />}
         {activeTab === "route" && <RoutePlanner />}
         {activeTab === "notify" && <ClientNotifier />}
+        {activeTab === "pickup" && <PickupCheck lang={lang} />}
         {activeTab === "address" && <AddressVerifier />}
         {activeTab === "loading" && <LoadingAssistant/>}
         {activeTab === "carhunter" && <CarHunter />}
