@@ -25,7 +25,9 @@ export default async function handler(req, res) {
       headers: {
         'Content-Type': 'application/json',
         'x-api-key': apiKey,
-        'anthropic-version': '2023-06-01'
+        'anthropic-version': '2023-06-01',
+        // Funciones en beta que pide el panel (p. ej. el modelo de reserva si la IA se niega)
+        ...(req.headers['anthropic-beta'] ? { 'anthropic-beta': req.headers['anthropic-beta'] } : {})
       },
       body: JSON.stringify(req.body)
     });

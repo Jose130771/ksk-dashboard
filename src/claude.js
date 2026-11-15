@@ -22,15 +22,22 @@ export async function callClaude(prompt, lang = "fr", opts = {}) {
   let response;
   let data = {};
   try {
+    // prompt puede ser texto o una lista de bloques (PDF, fotos y texto).
+    // opts.beta va como cabecera anthropic-beta y opts.extra se añade tal cual al cuerpo.
     response = await fetch("/api/anthropic", {
       method: "POST",
-      headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${token}`,
+        ...(opts.beta ? { "anthropic-beta": opts.beta } : {}),
+      },
       body: JSON.stringify({
-        model: "claude-sonnet-5",
+        model: opts.model || "claude-sonnet-5",
         max_tokens: opts.maxTokens || 1000,
         system: opts.system ||
           `Eres un experto en logística de transporte internacional de automóviles en Europa. Responde SIEMPRE en ${AI_LANG_NAME[lang] || "français"}, de forma clara y profesional.`,
         messages: [{ role: "user", content: prompt }],
+        ...(opts.extra || {}),
       }),
     });
     data = await response.json().catch(() => ({}));
