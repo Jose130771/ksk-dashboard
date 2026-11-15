@@ -1,5 +1,7 @@
-import { useState } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { callClaude, extraerJSON, ERR } from "./claude";
+import { getToken, sessionExpired } from "./auth";
+import Seguimiento, { diasDesde } from "./Seguimiento";
 
 // COTEJO ORDEN + CMR
 //
@@ -19,7 +21,8 @@ const UI = {
     orders: "Ordres", photos: "Photos CMR",
     check: "🔎 Lancer le contrôle", checking: "Contrôle en cours… (jusqu'à 1-2 min)",
     clear: "🗑️ Vider",
-    needBoth: "Ajoutez au moins un ordre (PDF) et une photo de CMR.",
+    needBoth: "Ajoutez au moins un ordre (PDF) ou des photos de CMR d'ordres déjà enregistrés.",
+    saveError: "Contrôle fait, mais il n'a pas pu être enregistré dans le suivi :",
     tooBig: "Trop de fichiers d'un coup (max ~4 Mo). Faites le contrôle en plusieurs fois.",
     badAnswer: "Réponse illisible de l'IA, réessayez.",
     order: "Ordre", car: "Véhicule", vinOrder: "VIN ordre", vinCmr: "VIN CMR", plate: "Immat.", cmr: "CMR", phase: "Phase", notes: "Notes",
@@ -40,7 +43,8 @@ const UI = {
     orders: "Órdenes", photos: "Fotos CMR",
     check: "🔎 Hacer el cotejo", checking: "Cotejando… (hasta 1-2 min)",
     clear: "🗑️ Vaciar",
-    needBoth: "Añade al menos una orden (PDF) y una foto de CMR.",
+    needBoth: "Añade al menos una orden (PDF), o fotos de CMR de órdenes ya registradas.",
+    saveError: "Cotejo hecho, pero no se ha podido guardar en el seguimiento:",
     tooBig: "Demasiados archivos de golpe (máx. ~4 MB). Haz el cotejo en varias veces.",
     badAnswer: "La IA ha devuelto algo ilegible, inténtalo otra vez.",
     order: "Orden", car: "Vehículo", vinOrder: "Bastidor orden", vinCmr: "Bastidor CMR", plate: "Matrícula", cmr: "CMR", phase: "Fase", notes: "Notas",
@@ -61,7 +65,8 @@ const UI = {
     orders: "Orders", photos: "CMR photos",
     check: "🔎 Run the check", checking: "Checking… (up to 1-2 min)",
     clear: "🗑️ Clear",
-    needBoth: "Add at least one order (PDF) and one CMR photo.",
+    needBoth: "Add at least one order (PDF), or CMR photos of already registered orders.",
+    saveError: "Check done, but it could not be saved to the follow-up:",
     tooBig: "Too many files at once (max ~4 MB). Split the check.",
     badAnswer: "Unreadable answer from the AI, try again.",
     order: "Order", car: "Vehicle", vinOrder: "Order VIN", vinCmr: "CMR VIN", plate: "Plate", cmr: "CMR", phase: "Phase", notes: "Notes",
@@ -102,9 +107,11 @@ const SCHEMA = {
       items: {
         type: "object",
         additionalProperties: false,
-        required: ["numero", "estado", "transporte_interior_espana", "coches", "problemas"],
+        required: ["numero", "camion", "fecha_emision", "estado", "transporte_interior_espana", "coches", "problemas"],
         properties: {
           numero: { type: "string" },
+          camion: { type: "string" },
+          fecha_emision: { type: "string" },
           estado: ESTADO,
           transporte_interior_espana: { type: "boolean" },
           coches: {
@@ -112,7 +119,7 @@ const SCHEMA = {
             items: {
               type: "object",
               additionalProperties: false,
-              required: ["modelo", "vin_orden", "vin_cmr", "matricula", "cmr_numero", "fase", "espera", "estado", "notas"],
+              required: ["modelo", "vin_orden", "vin_cmr", "matricula", "cmr_numero", "destino", "fase", "estado_entrega", "espera_lugar", "espera_desde", "estado", "notas"],
               properties: {
                 modelo: { type: "string" },
                 vin_orden: { type: "string" },
@@ -120,7 +127,10 @@ const SCHEMA = {
                 matricula: { type: "string" },
                 cmr_numero: { type: "string" },
                 fase: { type: "string", enum: ["carga", "descarga", "intermedio", "desconocida", "sin_cmr"] },
-                espera: { type: "string" },
+                destino: { type: "string" },
+                estado_entrega: { type: "string", enum: ["pendiente", "cargado", "intermedio", "entregado"] },
+                espera_lugar: { type: "string" },
+                espera_desde: { type: "string" },
                 estado: ESTADO,
                 notas: { type: "string" },
               },
@@ -166,7 +176,10 @@ REGLAS ESTRICTAS
 - Reservas o daños anotados (casilla 18 del transportista o notas del destinatario): "rojo", copiando lo que pone. Si en la casilla 18 solo pone algo como "adjunto fotos antes de cargar", no es una reserva de daños: no lo marques.
 - Si la orden pide verificar elementos (rueda de repuesto o kit, llave de repuesto, manual, cables de carga...) y el CMR tiene esas casillas (Keys, Spare wheel, Book's/Manual...) sin marcar: "naranja".
 - Coche de la orden sin CMR entre las fotos: fase "sin_cmr", estado "naranja" ("CMR no recibido"). Puede que simplemente no se haya subido todavía.
-- PUNTO INTERMEDIO: a veces un coche se deja en un punto intermedio (parking, campa, otro concesionario) para que lo recoja otro compañero. Si las notas o un CMR lo indican, ese coche va con fase "intermedio" (no "sin_cmr"), estado "naranja", y en "espera" pon dónde está, desde qué fecha y cuántos días lleva contando hasta HOY (p. ej. "Parking X · desde 09/11 · 6 días"). Si lleva 3 días o más, estado "rojo". Añade un problema recordando a quien organiza las cargas que el coche sigue esperando. Si no hay ningún dato de punto intermedio, "espera" va vacío.
+- PUNTO INTERMEDIO: a veces un coche se deja en un punto intermedio (parking, campa, otro concesionario) para que lo recoja otro compañero. Si las notas o un CMR lo indican, ese coche va con fase "intermedio" (no "sin_cmr"), estado "naranja", espera_lugar = dónde está y espera_desde = desde qué fecha (AAAA-MM-DD). Si lleva 3 días o más hasta HOY, estado "rojo". Añade un problema recordando a quien organiza las cargas que el coche sigue esperando. Si no hay dato de punto intermedio, espera_lugar y espera_desde van vacíos.
+- estado_entrega de cada coche: "entregado" SOLO si hay foto del CMR después de descargar con firma o sello del destinatario para ese coche (aunque falte la fecha); "intermedio" si se ha dejado en un punto intermedio; "cargado" si hay CMR o foto de antes de cargar pero ninguna prueba de entrega; "pendiente" si no hay nada de ese coche.
+- De cada orden: camion = matrícula de la tractora tal como sale en la orden (p. ej. "HC-506-DR"), fecha_emision = fecha de emisión de la orden en AAAA-MM-DD. destino de cada coche = nombre del destinatario y ciudad, corto.
+- ÓRDENES YA REGISTRADAS: si se te pasan, las fotos nuevas pueden ser de esas órdenes aunque no venga su PDF. Inclúyelas en "ordenes" solo si alguna foto o nota de hoy les corresponde, con su mismo número, camión y coches, y su estado_entrega nuevo.
 - "Date Chg" de la orden parece ser la fecha desde la que el coche está disponible, no la de carga real: si no coincide con la fecha del CMR, ponlo como "info", no como error.
 - Otras diferencias entre orden y CMR (modelo, versión HEV/PHEV, destinatario, dirección, matrícula del camión, nº de coches, pesos que no suman): "naranja".
 - transporte_interior_espana = true si la carga y la descarga son las dos en España. Si un CMR de ese viaje no lleva el NIF del cargador, añádelo como "info" (dato necesario para el documento de control).
@@ -229,6 +242,32 @@ export default function CmrCheck({ lang = "fr" }) {
   const [report, setReport] = useState(null);
   const [copied, setCopied] = useState(false);
   const [notes, setNotes] = useState("");
+  const [datos, setDatos] = useState(null);
+  const [cargando, setCargando] = useState(true);
+  const [errorSeg, setErrorSeg] = useState("");
+
+  // Llamada al seguimiento guardado en el servidor (GET para leer, POST para cambiar).
+  const api = useCallback(async (cuerpo) => {
+    const token = getToken();
+    if (!token) { sessionExpired(); return null; }
+    const res = await fetch("/api/seguimiento", {
+      method: cuerpo ? "POST" : "GET",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+      ...(cuerpo ? { body: JSON.stringify(cuerpo) } : {}),
+    });
+    if (res.status === 401) { sessionExpired(); return null; }
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
+    return data;
+  }, []);
+
+  useEffect(() => {
+    api().then(d => { if (d) setDatos(d); }).catch(e => setErrorSeg(e.message)).finally(() => setCargando(false));
+  }, [api]);
+
+  const accionSeguimiento = async (cuerpo) => {
+    try { const d = await api(cuerpo); if (d) setDatos(d); } catch (e) { alert(`${ERR} ${e.message}`); }
+  };
 
   const pdfs = files.filter(f => f.type === "application/pdf");
   const fotos = files.filter(f => f.type.startsWith("image/"));
@@ -242,7 +281,12 @@ export default function CmrCheck({ lang = "fr" }) {
   const remove = (i) => { setFiles(files.filter((_, j) => j !== i)); setReport(null); };
 
   const check = async () => {
-    if (!pdfs.length || !fotos.length) { alert(u.needBoth); return; }
+    const registradas = Object.values(datos?.ordenes || {})
+      .filter(o => !o.archivada && (o.coches || []).some(c => c.estado !== "entregado"))
+      .slice(0, 30)
+      .map(o => ({ numero: o.numero, camion: o.camion, fecha_emision: o.fecha_emision,
+        coches: (o.coches || []).map(c => ({ modelo: c.modelo, vin: c.vin, matricula: c.matricula, destino: c.destino, estado_entrega: c.estado, espera_lugar: c.espera_lugar, espera_desde: c.espera_desde })) }));
+    if (!pdfs.length && !(fotos.length && registradas.length)) { alert(u.needBoth); return; }
     setChecking(true);
     setReport(null);
     try {
@@ -263,6 +307,7 @@ export default function CmrCheck({ lang = "fr" }) {
         content.push({ type: "image", source: { type: "base64", media_type: "image/jpeg", data } });
       }
       if (bytes > MAX_BYTES) { alert(u.tooBig); return; }
+      if (registradas.length) content.push({ type: "text", text: `ÓRDENES YA REGISTRADAS (aún con coches sin entregar):\n${JSON.stringify(registradas)}` });
       if (notes.trim()) content.push({ type: "text", text: `NOTAS DEL CHÓFER / DE LA OFICINA:
 ${notes.trim()}` });
       content.push({ type: "text", text: `Hoy es ${new Date().toLocaleDateString("es-ES")}. Haz el cotejo de las órdenes con los CMR siguiendo las reglas.` });
@@ -282,6 +327,21 @@ ${notes.trim()}` });
       try { json = JSON.parse(res); } catch (e) { json = extraerJSON(res); }
       if (!json || !Array.isArray(json.ordenes)) { alert(u.badAnswer); return; }
       setReport(json);
+      try {
+        const d = await api({
+          accion: "guardar",
+          ordenes: json.ordenes.map(o => ({
+            numero: o.numero, camion: o.camion, fecha_emision: o.fecha_emision,
+            coches: o.coches.map(c => ({
+              modelo: c.modelo, vin: c.vin_cmr || c.vin_orden, matricula: c.matricula, destino: c.destino,
+              cmr: c.cmr_numero, estado: c.estado_entrega, espera_lugar: c.espera_lugar, espera_desde: c.espera_desde, notas: c.notas,
+            })),
+          })),
+        });
+        if (d) setDatos(d);
+      } catch (e) {
+        alert(`${u.saveError} ${e.message}`);
+      }
     } catch (e) {
       alert(`${ERR} ${e.message}`);
     } finally {
@@ -303,6 +363,8 @@ ${notes.trim()}` });
     <div>
       <h2 style={{ color: "#22c55e", marginBottom: 6, fontFamily: "'Rajdhani', sans-serif", fontSize: 22 }}>{u.title}</h2>
       <p style={{ color: "#9ca3af", fontSize: 13, marginBottom: 16 }}>{u.intro}</p>
+
+      <Seguimiento lang={lang} datos={datos} cargando={cargando} error={errorSeg} accion={accionSeguimiento} />
 
       <label
         onDragOver={e => { e.preventDefault(); setOver(true); }}
@@ -383,7 +445,7 @@ ${notes.trim()}` });
                           <td style={td}>{c.matricula}</td>
                           <td style={td}>{c.cmr_numero}</td>
                           <td style={td}>{u.phases[c.fase] || c.fase}</td>
-                          <td style={{ ...td, color: c.espera ? "#fbbf24" : "#e2e8f0" }}>{c.espera}</td>
+                          <td style={{ ...td, color: "#fbbf24" }}>{c.espera_lugar ? `${c.espera_lugar} · ${diasDesde(c.espera_desde)} d` : ""}</td>
                           <td style={{ ...td, color: "#cbd5e1" }}>{c.notas}</td>
                         </tr>
                       ))}
