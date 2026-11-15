@@ -141,6 +141,8 @@ const FILAS = 10;
 // Sello de goma de KSK (casillas 1, 4 y 22 cuando la carga es en KSK).
 const sello = () => `<div class="sello"><b>${KSK.nombre}</b><br>${KSK.lineas.map(esc).join("<br>")}</div>`;
 // KSK preimpreso como en sus talonarios (casillas 16 y 23).
+// En la casilla 4 se escribe poco: ahí va el sello en pequeño, nombre y dirección.
+const selloCorto = () => `<div class="sello"><b>${KSK.nombre}</b><br>${esc(KSK.lineas[0])}</div>`;
 const preimpreso = () => `<div class="pre"><div class="pre-n">${KSK.nombre}</div>${KSK.lineas.map(esc).join("<br>")}</div>`;
 
 const casilla = (n, fr, en, cuerpo = "", cls = "") =>
@@ -189,7 +191,7 @@ function paginaCMR(g, comun, copia, numero, coches, desde, total) {
       ${casilla(2, "Destinataire (nom, adresse, pays)", "Consignee (name, address, country)", lineas(g.destinatario), "h2")}
       ${casilla(3, "Lieu prévu pour la livraison de la marchandise (lieu, pays)", "Place of delivery of the goods (place, country)", esc(g.lugar_entrega), "h3")}
       ${casilla(4, "Lieu et date de la prise en charge de la marchandise (lieu, pays, date)", "Place and date of taking over the goods (place, country, date)",
-        `${ksk ? sello() : esc(g.lugar_carga)}<span class="fecha">${esc(comun.fecha)}</span>`, "h4")}
+        `${ksk ? selloCorto() : esc(g.lugar_carga)}<span class="fecha">${esc(comun.fecha)}</span>`, "h4")}
       ${casilla(5, "Documents annexés", "Documents attached", esc(g.documentos), "h5")}
     </div>
     <div class="der">
@@ -251,7 +253,7 @@ body { font-family: Arial, Helvetica, sans-serif; margin: 0; color: #111; }
 .lbl { font-size: 6.6px; line-height: 1.15; color: var(--c); }
 .lbl b { font-size: 9px; margin-right: 1mm; }
 .val { line-height: 1.3; margin-top: 0.8mm; }
-.h1, .h2 { height: 23mm; } .h3 { height: 12mm; } .h4 { height: 27mm; } .h5 { flex: 1; min-height: 9mm; }
+.h1 { height: 25mm; } .h2 { height: 34mm; } .h3 { height: 11mm; } .h4 { height: 16mm; } .h5 { flex: 1; min-height: 9mm; }
 .titulo { height: 30mm; color: var(--c); }
 .t1 { font-size: 10px; font-weight: 700; }
 .numero { position: absolute; top: 1mm; right: 2mm; border: 1px solid var(--c); padding: 1mm 2mm; font-size: 10px; color: #111; }
