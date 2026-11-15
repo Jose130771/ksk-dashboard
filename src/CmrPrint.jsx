@@ -69,8 +69,9 @@ const TXT = { type: "string" };
 const SCHEMA = {
   type: "object",
   additionalProperties: false,
-  required: ["tractora", "semi", "grupos", "avisos"],
+  required: ["numero_orden", "tractora", "semi", "grupos", "avisos"],
   properties: {
+    numero_orden: TXT,
     tractora: TXT,
     semi: TXT,
     avisos: { type: "array", items: TXT },
@@ -111,6 +112,7 @@ const instrucciones = (lang) => `Extraes de una orden de transporte de KSK Trans
 - carga_en_ksk: true solo si el sitio de carga es KSK Transport (Poligny).
 - verificar: elementos que la orden pide comprobar (rueda de repuesto o kit, llave de repuesto, manual, cables de carga, Becker...), en una línea en ${AI_LANG[lang] || "français"}; vacío si no pide nada.
 - coches: modelo corto (marca y modelo), vin y matrícula. NO inventes nada del bastidor: si la orden lo da cortado (con "*" o con menos de 17 caracteres), pon lo que haya sin el "*" y vin_completo = false.
+- numero_orden: el número de la orden (p. ej. "B26117477").
 - tractora y semi: las matrículas que pone la orden ("TR:" y "SR:").
 - avisos: en ${AI_LANG[lang] || "français"}, frases cortas sobre lo que falta o hay que revisar antes de imprimir (bastidores incompletos, direcciones a medias...).`;
 
@@ -129,88 +131,178 @@ const lineas = (s) => esc(s).replace(/\n/g, "<br>");
 const COPIAS = [
   { n: 1, fr: "Exemplaire de l'expéditeur", en: "Copy for sender", color: "#c2185b" },
   { n: 2, fr: "Exemplaire du destinataire", en: "Copy for consignee", color: "#1565c0" },
-  { n: 3, fr: "Exemplaire du transporteur", en: "Copy for carrier", color: "#2e7d32" },
-  { n: 4, fr: "Exemplaire supplémentaire", en: "Additional copy", color: "#555" },
+  { n: 3, fr: "Exemplaire du transporteur", en: "Copy for carrier", color: "#00875a" },
+  { n: 4, fr: "Exemplaire supplémentaire", en: "Additional copy", color: "#444" },
 ];
 
-const sello = () => `<div class="sello"><b>${KSK.nombre}</b><br>${KSK.lineas.map(esc).join("<br>")}</div>`;
+// Filas de coches por página: siempre unas cuantas en blanco para añadir a mano.
+const FILAS = 10;
 
-// Una página A4 con las casillas del CMR. Cada copia lleva su número y su color.
-function paginaCMR(g, comun, copia) {
-  const c = copia.color;
-  // Un bastidor incompleto se imprime con huecos delante para completarlo a mano,
-  // así nadie lo toma por bueno.
-  const vin = (x) => {
-    const v = String(x.vin || "").replace(/[^A-Za-z0-9]/g, "");
-    return x.vin_completo ? esc(v) : "_".repeat(Math.max(17 - v.length, 0)) + esc(v);
-  };
-  const coches = g.coches.map((x, i) =>
-    `<tr><td>${i + 1}.</td><td>${esc(x.modelo)}</td><td class="vin">${vin(x)}</td><td>${esc(x.matricula)}</td></tr>`).join("");
-  const casilla = (n, fr, en, cuerpo, extra = "") =>
-    `<div class="box ${extra}"><div class="lbl"><b>${n}</b> ${fr} / <i>${en}</i></div><div class="val">${cuerpo}</div></div>`;
-  return `<section class="page" style="--c:${c}">
+// Sello de goma de KSK (casillas 1, 4 y 22 cuando la carga es en KSK).
+const sello = () => `<div class="sello"><b>${KSK.nombre}</b><br>${KSK.lineas.map(esc).join("<br>")}</div>`;
+// KSK preimpreso como en sus talonarios (casillas 16 y 23).
+const preimpreso = () => `<div class="pre"><div class="pre-n">${KSK.nombre}</div>${KSK.lineas.map(esc).join("<br>")}</div>`;
+
+const casilla = (n, fr, en, cuerpo = "", cls = "") =>
+  `<div class="box ${cls}"><div class="lbl"><b>${n}</b> ${fr}<br><i>${en}</i></div><div class="val">${cuerpo}</div></div>`;
+
+// Un bastidor incompleto se imprime con huecos delante para completarlo a mano,
+// así nadie lo toma por bueno.
+const vin = (x) => {
+  const v = String(x.vin || "").replace(/[^A-Za-z0-9]/g, "");
+  return x.vin_completo ? esc(v) : "_".repeat(Math.max(17 - v.length, 0)) + esc(v);
+};
+
+// Tabla de coches: cada coche con sus propias casillas (llaves, documentos, rueda,
+// manual, cable, navegador) y su espacio de observaciones. Es lo que en el CMR de
+// siempre no cabe cuando van varios coches al mismo destino.
+function tablaCoches(coches, desde) {
+  const filas = [];
+  for (let i = 0; i < Math.max(FILAS, coches.length); i++) {
+    const c = coches[i];
+    filas.push(`<tr>
+      <td class="n">${desde + i + 1}</td>
+      <td>${c ? esc(c.modelo) : ""}</td>
+      <td class="vin">${c ? vin(c) : ""}</td>
+      <td>${c ? esc(c.matricula) : ""}</td>
+      <td class="k"></td><td class="k"></td><td class="k"></td><td class="k"></td><td class="k"></td><td class="k"></td>
+      <td class="obs"></td></tr>`);
+  }
+  return `<table class="cars">
+    <tr><th class="n">N°</th><th>Véhicule<br><i>Vehicle</i></th><th>VIN / Châssis</th><th>Immat.<br><i>Plate</i></th>
+      <th class="k">Clés n°<br><i>Keys</i></th><th class="k">Docs</th><th class="k">SD /<br>Navi</th><th class="k">Roue / Kit<br><i>Spare</i></th>
+      <th class="k">Manuel<br><i>Book</i></th><th class="k">Câble<br><i>Cable</i></th><th class="obs">Observations / dommages<br><i>Notes / damage</i></th></tr>
+    ${filas.join("")}</table>`;
+}
+
+// Una página A4 con la misma disposición que los talonarios CMR de KSK.
+function paginaCMR(g, comun, copia, numero, coches, desde, total) {
+  const ksk = g.carga_en_ksk;
+  return `<section class="page" style="--c:${copia.color}">
   ${DEMO ? `<div class="demo">EXEMPLE · EJEMPLO</div>` : ""}
-  <div class="head">
-    <div class="copy"><span class="num">${copia.n}</span> ${copia.fr}<br><i>${copia.en}</i></div>
-    <div class="title">LETTRE DE VOITURE INTERNATIONALE<br><i>INTERNATIONAL CONSIGNMENT NOTE</i> <span class="cmr">CMR</span></div>
+  <div class="top">
+    <div class="copy"><span class="num">${copia.n}</span><span>${copia.fr}<br><i>${copia.en}</i></span></div>
   </div>
-  <div class="grid">
-    ${casilla(1, "Expéditeur (nom, adresse, pays)", "Sender", g.carga_en_ksk ? sello() : lineas(g.remitente), "a1")}
-    ${casilla(16, "Transporteur (nom, adresse, pays)", "Carrier", sello(), "a16")}
-    ${casilla(2, "Destinataire (nom, adresse, pays)", "Consignee", lineas(g.destinatario), "a2")}
-    ${casilla(17, "Transporteurs successifs", "Successive carriers", `N° Tracteur : <b>${esc(comun.tractora)}</b><br>N° Semi : <b>${esc(comun.semi)}</b>`, "a17")}
-    ${casilla(3, "Lieu prévu pour la livraison", "Place of delivery", esc(g.lugar_entrega), "a3")}
-    ${casilla(18, "Réserves et observations du transporteur", "Carrier's reservations", "", "a18")}
-    ${casilla(4, "Lieu et date de la prise en charge", "Place and date of taking over", `${esc(g.lugar_carga)} — ${esc(comun.fecha)}`, "a4")}
-    ${casilla(5, "Documents annexés", "Documents attached", esc(g.documentos), "a5")}
-    <div class="box a6"><div class="lbl"><b>6–12</b> Marques, nature de la marchandise, VIN / <i>Marks, nature of the goods, VIN</i></div>
-      <table class="cars"><tr><th></th><th>Véhicule</th><th>VIN</th><th>Immat.</th></tr>${coches}</table>
-      <div class="tot">Nombre de véhicules / <i>Number of vehicles</i> : <b>${g.coches.length}</b></div></div>
-    ${casilla(13, "Instructions de l'expéditeur", "Sender's instructions", esc(g.verificar), "a13")}
-    <div class="box a19"><div class="lbl">Contrôle / <i>Check</i></div><div class="checks">${["Keys", "Documents", "SD/CD/Navi", "Spare wheel", "Book's/Manual", "Charging cable", "Antenna", "Used car"].map(k => `<span>☐ ${k}</span>`).join("")}</div></div>
-    ${casilla(21, "Établie à / le", "Established in / on", `${esc(g.lugar_carga)} — ${esc(comun.fecha)}`, "a21")}
-    ${casilla(22, "Signature et timbre de l'expéditeur", "Signature and stamp of the sender", g.carga_en_ksk ? sello() : "", "a22 sig")}
-    ${casilla(23, "Signature et timbre du transporteur", "Signature and stamp of the carrier", sello(), "a23 sig")}
-    ${casilla(24, "Marchandises reçues — Lieu / le", "Goods received — Place / on", "<div class='linea'>Lieu / Place : ____________________ &nbsp; Le / On : ___/___/20__</div>", "a24 sig")}
+  <div class="sheet">
+    <div class="izq">
+      ${casilla(1, "Expéditeur (nom, adresse, pays)", "Sender (name, address, country)", ksk ? sello() : lineas(g.remitente), "h1")}
+      ${casilla(2, "Destinataire (nom, adresse, pays)", "Consignee (name, address, country)", lineas(g.destinatario), "h2")}
+      ${casilla(3, "Lieu prévu pour la livraison de la marchandise (lieu, pays)", "Place of delivery of the goods (place, country)", esc(g.lugar_entrega), "h3")}
+      ${casilla(4, "Lieu et date de la prise en charge de la marchandise (lieu, pays, date)", "Place and date of taking over the goods (place, country, date)",
+        `${ksk ? sello() : esc(g.lugar_carga)}<span class="fecha">${esc(comun.fecha)}</span>`, "h4")}
+      ${casilla(5, "Documents annexés", "Documents attached", esc(g.documentos), "h5")}
+    </div>
+    <div class="der">
+      <div class="box titulo">
+        <div class="t1">LETTRE DE VOITURE INTERNATIONALE<br><i>INTERNATIONAL CONSIGNMENT NOTE</i></div>
+        <div class="numero">N° <b>${esc(numero)}</b></div>
+        <div class="oval">CMR</div>
+        <div class="conv">Ce transport est soumis, nonobstant toute clause contraire, à la Convention relative au contrat de transport international de marchandises par route (CMR).<br><i>This carriage is subject, notwithstanding any clause to the contrary, to the Convention on the Contract for the International Carriage of goods by road (CMR).</i></div>
+      </div>
+      ${casilla(16, "Transporteur (nom, adresse, pays)", "Carrier (name, address, country)", preimpreso(), "h16")}
+      ${casilla(17, "Transporteurs successifs (nom, adresse, pays)", "Successive carriers (name, address, country)",
+        `N° Tracteurs : <b>${esc(comun.tractora)}</b><br>N° Semi : <b>${esc(comun.semi)}</b>`, "h17")}
+      ${casilla(18, "Réserves et observations du transporteur", "Carrier's reservations and observations", "", "h18")}
+    </div>
+  </div>
+  <div class="box mercancia">
+    <div class="lbl cols"><span><b>6</b> Marques et numéros<br><i>Marks and Nos</i></span><span><b>7</b> Nombre des colis<br><i>Number of packages</i></span><span><b>8</b> Mode d'emballage<br><i>Method of packing</i></span><span><b>9</b> Nature de la marchandise<br><i>Nature of the goods</i></span><span><b>10</b> N° statistique<br><i>Statistical number</i></span><span><b>11</b> Poids brut kg<br><i>Gross weight</i></span><span><b>12</b> Cubage m³<br><i>Volume</i></span></div>
+    ${tablaCoches(coches, desde)}
+    <div class="tot">Nombre de véhicules / <i>Number of vehicles</i> : <b>${total}</b>${desde > 0 || coches.length < total ? ` &nbsp;·&nbsp; ${desde + 1}–${desde + coches.length} / ${total}` : ""}</div>
+  </div>
+  <div class="box adr">Marchandises dangereuses ☐ &nbsp; Sous température dirigée ☐ &nbsp; Déclaration jointe ☐ &nbsp;&nbsp; Classe ____ &nbsp; Chiffre ____ &nbsp; Lettre ____ &nbsp; (ADR*)</div>
+  <div class="sheet">
+    <div class="izq">
+      ${casilla(13, "Instructions de l'expéditeur", "Sender's instructions", esc(g.verificar), "h13")}
+      ${casilla(14, "Prescriptions d'affranchissement", "Instructions as to payment for carriage", "☐ Franco / <i>Carriage paid</i> &nbsp;&nbsp; ☐ Non franco / <i>Carriage forward</i>", "h14")}
+      ${casilla(21, "Établie à", "Established in", `${ksk ? "Poligny" : esc(g.lugar_carga)} <span class="fecha">le / on ${esc(comun.fecha)}</span>`, "h21")}
+    </div>
+    <div class="der">
+      ${casilla(19, "Conventions particulières", "Special agreements", "", "h19")}
+      <div class="box h20"><div class="lbl"><b>20</b> À payer par / <i>To be paid by</i></div>
+        <table class="pago"><tr><th></th><th>Expéditeur<br><i>Senders</i></th><th>Monnaie<br><i>Currency</i></th><th>Destinataire<br><i>Consignee</i></th></tr>
+        ${["Prix de transport", "Réductions", "Solde", "Suppléments", "Frais accessoires", "TOTAL"].map(f => `<tr><td>${f}</td><td></td><td></td><td></td></tr>`).join("")}</table></div>
+      ${casilla(15, "Remboursement", "Cash on delivery", "", "h15")}
+    </div>
+  </div>
+  <div class="firmas">
+    ${casilla(22, "Signature et timbre de l'expéditeur", "Signature and stamp of the sender", ksk ? sello() : "", "f")}
+    ${casilla(23, "Signature et timbre du transporteur", "Signature and stamp of the carrier", preimpreso(), "f")}
+    ${casilla(24, "Marchandises reçues — Lieu / le", "Goods received — Place / on", "<div class='lugar'>Lieu / <i>Place</i> : ______________ &nbsp; le / <i>on</i> : ___/___/20___</div><div class='lugar2'>Signature et timbre du destinataire<br><i>Signature and stamp of the consignee</i></div>", "f")}
   </div>
   <div class="foot">LE REFUS NON MOTIVÉ DE SIGNATURE ENGAGE LA RESPONSABILITÉ DU REMETTANT OU DU DESTINATAIRE.</div>
 </section>`;
 }
 
 const CSS = `
-@page { size: A4; margin: 8mm; }
+@page { size: A4; margin: 7mm; }
 * { box-sizing: border-box; }
 body { font-family: Arial, Helvetica, sans-serif; margin: 0; color: #111; }
-.page { position: relative; height: 279mm; page-break-after: always; border: 1.5px solid var(--c); padding: 4mm; overflow: hidden; }
+.page { position: relative; width: 196mm; height: 282mm; page-break-after: always; color: #111; display: flex; flex-direction: column; }
 .page:last-child { page-break-after: auto; }
-.demo { position: absolute; top: 45%; left: 5%; right: 5%; text-align: center; font-size: 64px; font-weight: 700; color: rgba(200,0,0,0.12); transform: rotate(-30deg); pointer-events: none; }
-.head { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 3mm; color: var(--c); }
-.copy { font-size: 13px; } .num { font-size: 30px; font-weight: 700; vertical-align: middle; }
-.title { text-align: right; font-size: 12px; font-weight: 700; }
-.cmr { display: inline-block; border: 2px solid var(--c); border-radius: 50%; padding: 2px 10px; margin-left: 6px; }
-.grid { display: grid; grid-template-columns: 1fr 1fr; gap: 0; border-top: 1px solid var(--c); border-left: 1px solid var(--c); }
-.box { border-right: 1px solid var(--c); border-bottom: 1px solid var(--c); padding: 1.5mm 2mm; min-height: 17mm; font-size: 11px; }
-.lbl { font-size: 7.5px; color: var(--c); margin-bottom: 1mm; }
-.val { line-height: 1.35; }
-.a6 { grid-column: 1 / 3; min-height: 70mm; }
-.a13, .a19 { min-height: 20mm; }
-.a21 { grid-column: 1 / 3; min-height: 9mm; }
-.sig { min-height: 36mm; }
-.a24 { grid-column: 1 / 3; }
-.cars { width: 100%; border-collapse: collapse; font-size: 11.5px; margin-top: 1mm; }
-.cars th { text-align: left; font-size: 8px; color: var(--c); border-bottom: 1px solid #ccc; }
-.cars td { padding: 1.2mm 1mm; border-bottom: 1px dotted #ccc; }
-.vin { font-family: "Courier New", monospace; font-size: 13px; font-weight: 700; letter-spacing: 0.5px; }
-.tot { margin-top: 2mm; font-size: 10px; }
-.checks { display: grid; grid-template-columns: 1fr 1fr; gap: 1mm 3mm; font-size: 10.5px; }
-.sello { display: inline-block; border: 1.5px solid #1a237e; color: #1a237e; border-radius: 3px; padding: 1.5mm 2.5mm; font-size: 9px; line-height: 1.35; }
-.linea { margin-top: 24mm; font-size: 10px; }
-.foot { position: absolute; bottom: 3mm; left: 4mm; right: 4mm; text-align: center; font-size: 8px; color: var(--c); }
+.demo { position: absolute; top: 42%; left: 0; right: 0; text-align: center; font-size: 70px; font-weight: 700; color: rgba(200,0,0,0.10); transform: rotate(-32deg); pointer-events: none; }
+.top { color: var(--c); height: 11mm; }
+.copy { display: flex; gap: 2mm; align-items: center; font-size: 13px; }
+.num { font-size: 34px; font-weight: 700; }
+.sheet { display: grid; grid-template-columns: 54% 46%; border: 1px solid var(--c); border-bottom: none; }
+.izq { border-right: 1px solid var(--c); display: flex; flex-direction: column; }
+.der { display: flex; flex-direction: column; }
+.box { border-bottom: 1px solid var(--c); padding: 1mm 1.8mm; font-size: 10.5px; position: relative; }
+.lbl { font-size: 6.6px; line-height: 1.15; color: var(--c); }
+.lbl b { font-size: 9px; margin-right: 1mm; }
+.val { line-height: 1.3; margin-top: 0.8mm; }
+.h1, .h2 { height: 23mm; } .h3 { height: 12mm; } .h4 { height: 27mm; } .h5 { flex: 1; min-height: 9mm; }
+.titulo { height: 30mm; color: var(--c); }
+.t1 { font-size: 10px; font-weight: 700; }
+.numero { position: absolute; top: 1mm; right: 2mm; border: 1px solid var(--c); padding: 1mm 2mm; font-size: 10px; color: #111; }
+.oval { display: inline-block; border: 2px solid var(--c); border-radius: 50%; padding: 1mm 5mm; font-weight: 700; font-size: 14px; margin: 1.5mm 0; }
+.conv { font-size: 6px; line-height: 1.2; }
+.h16 { height: 27mm; } .h17 { height: 14mm; } .h18 { flex: 1; min-height: 18mm; }
+.pre { color: #111; font-size: 9px; line-height: 1.35; text-align: center; }
+.pre-n { font-size: 16px; font-weight: 700; letter-spacing: 1px; color: var(--c); }
+.sello { display: inline-block; border: 1.5px solid #1a237e; color: #1a237e; border-radius: 3px; padding: 1mm 2mm; font-size: 8.5px; line-height: 1.3; transform: rotate(-1.5deg); }
+.fecha { float: right; font-size: 12px; font-weight: 700; }
+.mercancia { border: 1px solid var(--c); border-top: 1px solid var(--c); padding-bottom: 1.5mm; }
+.cols { display: grid; grid-template-columns: 1.4fr 1fr 1fr 1.4fr 1fr 1fr 0.8fr; gap: 1mm; margin-bottom: 1mm; }
+.cars { width: 100%; border-collapse: collapse; font-size: 10px; }
+.cars th { font-size: 6.8px; font-weight: 600; color: var(--c); border: 1px solid var(--c); padding: 0.6mm; text-align: center; line-height: 1.1; }
+.cars td { border: 1px solid var(--c); height: 7.1mm; padding: 0 1mm; }
+.cars .n { width: 6mm; text-align: center; }
+.cars .k { width: 10mm; }
+.cars .obs { width: 42mm; }
+.vin { font-family: "Courier New", monospace; font-size: 11.5px; font-weight: 700; letter-spacing: 0.3px; white-space: nowrap; }
+.tot { margin-top: 1.2mm; font-size: 9.5px; }
+.adr { border: 1px solid var(--c); border-top: none; font-size: 8.5px; color: var(--c); padding: 1.2mm 2mm; }
+.adr + .sheet { border-top: none; }
+.h13 { height: 14mm; } .h14 { height: 10mm; } .h21 { flex: 1; min-height: 9mm; }
+.h19 { height: 9mm; } .h15 { flex: 1; min-height: 6mm; }
+.pago { width: 100%; border-collapse: collapse; font-size: 6.5px; color: var(--c); }
+.pago th { font-weight: 400; text-align: left; border-bottom: 1px solid var(--c); }
+.pago td { border-bottom: 1px solid var(--c); height: 2.6mm; }
+.pago td + td, .pago th + th { border-left: 1px solid var(--c); }
+.firmas { display: grid; grid-template-columns: 1fr 1fr 1fr; border: 1px solid var(--c); border-top: none; flex: 1; }
+.firmas .box { border-bottom: none; border-right: 1px solid var(--c); }
+.firmas .box:last-child { border-right: none; }
+.firmas .sello { font-size: 6.8px; padding: 0.8mm 1.5mm; }
+.firmas .pre { font-size: 7px; }
+.firmas .pre-n { font-size: 13px; }
+.lugar { font-size: 8.5px; margin-top: 2mm; }
+.lugar2 { position: absolute; bottom: 1.5mm; left: 1.8mm; font-size: 6.6px; color: var(--c); }
+.foot { text-align: center; font-size: 7.5px; color: var(--c); padding-top: 1mm; }
 `;
 
+// Número de referencia del CMR: orden + destinatario. No es el número de serie
+// del talonario, solo sirve para casarlo luego con la orden en el seguimiento.
 function imprimir(grupos, comun) {
   const copias = COPIAS.slice(0, comun.copias);
-  const paginas = grupos.flatMap(g => copias.map(c => paginaCMR(g, comun, c))).join("");
+  const paginas = grupos.flatMap((g, gi) => {
+    const numero = `${comun.orden || "KSK"}-${gi + 1}`;
+    // Más de FILAS coches: el resto va en una hoja de continuación con el mismo número.
+    const trozos = [];
+    for (let i = 0; i < Math.max(g.coches.length, 1); i += FILAS) trozos.push(i);
+    return copias.flatMap(c => trozos.map(desde =>
+      paginaCMR(g, comun, c, numero, g.coches.slice(desde, desde + FILAS), desde, g.coches.length)));
+  }).join("");
   const w = window.open("", "_blank");
   if (!w) return;
   w.document.write(`<!doctype html><html><head><meta charset="utf-8"><title>CMR</title><style>${CSS}</style></head><body>${paginas}</body></html>`);
@@ -261,7 +353,7 @@ export default function CmrPrint({ lang = "fr" }) {
       try { json = JSON.parse(res); } catch (e) { json = extraerJSON(res); }
       if (!json || !Array.isArray(json.grupos)) { alert(u.badAnswer); return; }
       setData(json);
-      setComun(c => ({ ...c, tractora: json.tractora || c.tractora, semi: json.semi || c.semi }));
+      setComun(c => ({ ...c, orden: json.numero_orden || "", tractora: json.tractora || c.tractora, semi: json.semi || c.semi }));
     } catch (e) {
       alert(`${ERR} ${e.message}`);
     } finally {
