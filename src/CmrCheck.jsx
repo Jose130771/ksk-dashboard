@@ -27,7 +27,10 @@ const UI = {
     orphan: "CMR sans ordre correspondant",
     deca: "🇪🇸 Transport intérieur en Espagne : document de contrôle électronique obligatoire",
     copy: "📋 Copier le résumé pour WhatsApp", copied: "Copié",
-    phases: { carga: "chargement", descarga: "déchargement", desconocida: "?", sin_cmr: "pas de CMR" },
+    phases: { carga: "chargement", descarga: "déchargement", intermedio: "point relais", desconocida: "?", sin_cmr: "pas de CMR" },
+    notesLabel: "Notes du chauffeur / du bureau (facultatif)",
+    notesPh: "Ex. : la Mercedes GLC laissée le 9/11 au parking de … pour qu'un collègue la récupère",
+    waiting: "En attente",
   },
   es: {
     title: "🔎 Cotejo orden + CMR",
@@ -45,7 +48,10 @@ const UI = {
     orphan: "CMR sin orden que le corresponda",
     deca: "🇪🇸 Transporte dentro de España: documento de control electrónico obligatorio",
     copy: "📋 Copiar resumen para WhatsApp", copied: "Copiado",
-    phases: { carga: "carga", descarga: "descarga", desconocida: "?", sin_cmr: "sin CMR" },
+    phases: { carga: "carga", descarga: "descarga", intermedio: "punto intermedio", desconocida: "?", sin_cmr: "sin CMR" },
+    notesLabel: "Notas del chófer / de la oficina (opcional)",
+    notesPh: "Ej.: el Mercedes GLC lo dejé el 9/11 en el parking de … para que lo recoja otro compañero",
+    waiting: "En espera",
   },
   en: {
     title: "🔎 Order + CMR check",
@@ -63,7 +69,10 @@ const UI = {
     orphan: "CMR without a matching order",
     deca: "🇪🇸 Domestic transport in Spain: electronic control document required",
     copy: "📋 Copy summary for WhatsApp", copied: "Copied",
-    phases: { carga: "loading", descarga: "unloading", desconocida: "?", sin_cmr: "no CMR" },
+    phases: { carga: "loading", descarga: "unloading", intermedio: "relay point", desconocida: "?", sin_cmr: "no CMR" },
+    notesLabel: "Driver / office notes (optional)",
+    notesPh: "E.g. the Mercedes GLC was left on 9/11 at … parking for a colleague to pick up",
+    waiting: "Waiting",
   },
 };
 
@@ -103,14 +112,15 @@ const SCHEMA = {
             items: {
               type: "object",
               additionalProperties: false,
-              required: ["modelo", "vin_orden", "vin_cmr", "matricula", "cmr_numero", "fase", "estado", "notas"],
+              required: ["modelo", "vin_orden", "vin_cmr", "matricula", "cmr_numero", "fase", "espera", "estado", "notas"],
               properties: {
                 modelo: { type: "string" },
                 vin_orden: { type: "string" },
                 vin_cmr: { type: "string" },
                 matricula: { type: "string" },
                 cmr_numero: { type: "string" },
-                fase: { type: "string", enum: ["carga", "descarga", "desconocida", "sin_cmr"] },
+                fase: { type: "string", enum: ["carga", "descarga", "intermedio", "desconocida", "sin_cmr"] },
+                espera: { type: "string" },
                 estado: ESTADO,
                 notas: { type: "string" },
               },
@@ -156,12 +166,14 @@ REGLAS ESTRICTAS
 - Reservas o daños anotados (casilla 18 del transportista o notas del destinatario): "rojo", copiando lo que pone. Si en la casilla 18 solo pone algo como "adjunto fotos antes de cargar", no es una reserva de daños: no lo marques.
 - Si la orden pide verificar elementos (rueda de repuesto o kit, llave de repuesto, manual, cables de carga...) y el CMR tiene esas casillas (Keys, Spare wheel, Book's/Manual...) sin marcar: "naranja".
 - Coche de la orden sin CMR entre las fotos: fase "sin_cmr", estado "naranja" ("CMR no recibido"). Puede que simplemente no se haya subido todavía.
+- PUNTO INTERMEDIO: a veces un coche se deja en un punto intermedio (parking, campa, otro concesionario) para que lo recoja otro compañero. Si las notas o un CMR lo indican, ese coche va con fase "intermedio" (no "sin_cmr"), estado "naranja", y en "espera" pon dónde está, desde qué fecha y cuántos días lleva contando hasta HOY (p. ej. "Parking X · desde 09/11 · 6 días"). Si lleva 3 días o más, estado "rojo". Añade un problema recordando a quien organiza las cargas que el coche sigue esperando. Si no hay ningún dato de punto intermedio, "espera" va vacío.
 - "Date Chg" de la orden parece ser la fecha desde la que el coche está disponible, no la de carga real: si no coincide con la fecha del CMR, ponlo como "info", no como error.
 - Otras diferencias entre orden y CMR (modelo, versión HEV/PHEV, destinatario, dirección, matrícula del camión, nº de coches, pesos que no suman): "naranja".
 - transporte_interior_espana = true si la carga y la descarga son las dos en España. Si un CMR de ese viaje no lleva el NIF del cargador, añádelo como "info" (dato necesario para el documento de control).
 - Estado de cada orden = el peor de sus coches y problemas. estado_global = el peor de todo.
 - cmrs_sin_orden: CMR de las fotos que no corresponden a ninguna orden subida.
-- texto_whatsapp: resumen corto en texto plano para pegar en WhatsApp (una línea por orden con su semáforo 🟢🟠🔴 y lo que falla, sin markdown).
+- texto_whatsapp: resumen corto en texto plano para pegar en WhatsApp (una línea por orden con su semáforo 🟢🟠🔴 y lo que falla, sin markdown). Cada coche en punto intermedio lleva su propia línea de recordatorio: modelo, bastidor, dónde está y cuántos días lleva esperando.
+- Las NOTAS del chófer o de la oficina, si las hay, son datos fiables sobre lo que ha pasado en el viaje.
 - Escribe todos los textos (resumen, notas, problemas, texto_whatsapp) en ${AI_LANG[lang] || "français"}, frases cortas y concretas.`;
 
 function leerBase64(file) {
@@ -216,6 +228,7 @@ export default function CmrCheck({ lang = "fr" }) {
   const [checking, setChecking] = useState(false);
   const [report, setReport] = useState(null);
   const [copied, setCopied] = useState(false);
+  const [notes, setNotes] = useState("");
 
   const pdfs = files.filter(f => f.type === "application/pdf");
   const fotos = files.filter(f => f.type.startsWith("image/"));
@@ -250,7 +263,9 @@ export default function CmrCheck({ lang = "fr" }) {
         content.push({ type: "image", source: { type: "base64", media_type: "image/jpeg", data } });
       }
       if (bytes > MAX_BYTES) { alert(u.tooBig); return; }
-      content.push({ type: "text", text: "Haz el cotejo de las órdenes con los CMR siguiendo las reglas." });
+      if (notes.trim()) content.push({ type: "text", text: `NOTAS DEL CHÓFER / DE LA OFICINA:
+${notes.trim()}` });
+      content.push({ type: "text", text: `Hoy es ${new Date().toLocaleDateString("es-ES")}. Haz el cotejo de las órdenes con los CMR siguiendo las reglas.` });
 
       const res = await callClaude(content, lang, {
         model: "claude-opus-5-5",
@@ -315,6 +330,10 @@ export default function CmrCheck({ lang = "fr" }) {
         </div>
       )}
 
+      <label style={{ color: "#9ca3af", fontSize: 12, display: "block", margin: "14px 0 6px" }}>{u.notesLabel}</label>
+      <textarea value={notes} onChange={e => { setNotes(e.target.value); setReport(null); }} rows={2} placeholder={u.notesPh}
+        style={{ ...box, resize: "vertical", lineHeight: 1.5, fontFamily: "inherit" }} />
+
       <div style={{ display: "flex", gap: 10, marginTop: 14, alignItems: "center", flexWrap: "wrap" }}>
         <button onClick={check} disabled={checking || !files.length}
           style={btn("linear-gradient(135deg, #22c55e, #16a34a)", "#22c55e", "#000", checking || !files.length)}>
@@ -351,7 +370,7 @@ export default function CmrCheck({ lang = "fr" }) {
                     <thead>
                       <tr>
                         <th style={th}></th><th style={th}>{u.car}</th><th style={th}>{u.vinOrder}</th><th style={th}>{u.vinCmr}</th>
-                        <th style={th}>{u.plate}</th><th style={th}>{u.cmr}</th><th style={th}>{u.phase}</th><th style={th}>{u.notes}</th>
+                        <th style={th}>{u.plate}</th><th style={th}>{u.cmr}</th><th style={th}>{u.phase}</th><th style={th}>{u.waiting}</th><th style={th}>{u.notes}</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -364,6 +383,7 @@ export default function CmrCheck({ lang = "fr" }) {
                           <td style={td}>{c.matricula}</td>
                           <td style={td}>{c.cmr_numero}</td>
                           <td style={td}>{u.phases[c.fase] || c.fase}</td>
+                          <td style={{ ...td, color: c.espera ? "#fbbf24" : "#e2e8f0" }}>{c.espera}</td>
                           <td style={{ ...td, color: "#cbd5e1" }}>{c.notas}</td>
                         </tr>
                       ))}

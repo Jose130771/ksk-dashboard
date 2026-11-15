@@ -16,8 +16,8 @@ const ALERTAS = [
 async function buscarChollos(alerta) {
   const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
   const response = await client.messages.create({
-    model: "claude-sonnet-4-20250514",
-    max_tokens: 1500,
+    model: "claude-sonnet-5-5",
+    max_tokens: 4000,
     messages: [{
       role: "user",
       content: `Eres experto en compraventa de coches. Busca oportunidades con estos criterios:
@@ -26,7 +26,9 @@ Devuelve SOLO JSON sin backticks:
 {"chollos":[{"titulo":"BMW 330e Sport 2019","precio_venta":17500,"precio_mercado":22000,"ahorro":4500,"margen_reventa":3200,"año":2019,"km":89000,"combustible":"Híbrido","zona":"Madrid","fuente":"AutoScout24","url":"https://www.autoscout24.es","score":8.7,"motivo":"19% bajo mercado","riesgos":"Revisar batería"}]}`
     }]
   });
-  const raw = response.content[0].text.replace(/```json|```/g, '').trim();
+  // El modelo puede devolver un bloque "thinking" antes del texto: hay que buscar el de tipo "text".
+  const texto = response.content.find(b => b.type === 'text')?.text || '';
+  const raw = texto.replace(/```json|```/g, '').trim();
   const match = raw.match(/\{[\s\S]*\}/);
   if (!match) throw new Error('No JSON');
   return JSON.parse(match[0]);
