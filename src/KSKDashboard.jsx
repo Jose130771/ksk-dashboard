@@ -5,6 +5,7 @@ import { getToken, sessionExpired } from "./auth";
 import { callClaude, ERR } from "./claude";
 import PickupCheck from "./PickupCheck";
 import CmrCheck from "./CmrCheck";
+import CmrPrint from "./CmrPrint";
 
 // Contexto de idioma: cualquier componente puede leer { lang, t }
 const LangContext = createContext({ lang: "fr", t: (k) => k });
@@ -16,6 +17,7 @@ const TABS = [
   { id: "notify", icon: "📱" },
   { id: "pickup", icon: "🛠️" },
   { id: "cmrcheck", icon: "🔎" },
+  { id: "cmrmake", icon: "🖨️" },
   { id: "address", icon: "📍" },
   { id: "loading", icon: "🚛" },
   { id: "carhunter", icon: "🚗" },
@@ -517,7 +519,7 @@ export default function KSKDashboard() {
 
   const changeLang = (l) => { setLang(l); localStorage.setItem("ui_lang", l); };
 
-  const tabColors = { cargo: "#f59e0b", route: "#3b82f6", notify: "#10b981", pickup: "#f97316", cmrcheck: "#22c55e", address: "#a855f7", loading: "#0ea5e9", carhunter: "#16a34a" };
+  const tabColors = { cargo: "#f59e0b", route: "#3b82f6", notify: "#10b981", pickup: "#f97316", cmrcheck: "#22c55e", cmrmake: "#38bdf8", address: "#a855f7", loading: "#0ea5e9", carhunter: "#16a34a" };
 
   return (
     <LangContext.Provider value={{ lang, t }}>
@@ -575,6 +577,7 @@ export default function KSKDashboard() {
         {activeTab === "notify" && <ClientNotifier />}
         {activeTab === "pickup" && <PickupCheck lang={lang} />}
         {activeTab === "cmrcheck" && <CmrCheck lang={lang} />}
+        {activeTab === "cmrmake" && <CmrPrint lang={lang} />}
         {activeTab === "address" && <AddressVerifier />}
         {activeTab === "loading" && <LoadingAssistant/>}
         {activeTab === "carhunter" && <CarHunter />}
