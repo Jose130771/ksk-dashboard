@@ -132,7 +132,7 @@ const COPIAS = [
   { n: 1, fr: "Exemplaire de l'expéditeur", en: "Copy for sender", color: "#c2185b" },
   { n: 2, fr: "Exemplaire du destinataire", en: "Copy for consignee", color: "#1565c0" },
   { n: 3, fr: "Exemplaire du transporteur", en: "Copy for carrier", color: "#00875a" },
-  { n: 4, fr: "Exemplaire supplémentaire", en: "Additional copy", color: "#444" },
+  { n: 4, fr: "Exemplaire archives de l'entreprise", en: "Copy for company records", color: "#111" },
 ];
 
 // Filas de coches por página: siempre unas cuantas en blanco para añadir a mano.
@@ -333,7 +333,7 @@ export default function CmrPrint({ lang = "fr" }) {
   const [file, setFile] = useState(null);
   const [reading, setReading] = useState(false);
   const [data, setData] = useState(null);
-  const [comun, setComun] = useState({ tractora: "", semi: "", fecha: new Date().toLocaleDateString("fr-FR"), copias: 3 });
+  const [comun, setComun] = useState({ tractora: "", semi: "", fecha: new Date().toLocaleDateString("fr-FR"), copias: 4 });
 
   const leer = async () => {
     if (!file) return;
